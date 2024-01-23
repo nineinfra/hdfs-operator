@@ -7,6 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"net/url"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"strconv"
@@ -74,6 +75,7 @@ func getConfigValue(cluster *hdfsv1.HdfsCluster, key string, value string) strin
 	}
 	return value
 }
+
 func getPortByName(cluster *hdfsv1.HdfsCluster, name string) int32 {
 	var namedPort int32
 	for k, v := range DefaultNamedPort {
@@ -92,6 +94,13 @@ func getPortByName(cluster *hdfsv1.HdfsCluster, name string) int32 {
 	}
 	return namedPort
 }
+
+func getHttpPortByRole(cluster *hdfsv1.HdfsCluster, role string) int32 {
+	rolePrefix := HDFSRole2Prefix[role]
+	name := fmt.Sprintf("%s%s", rolePrefix, "-http")
+	return getPortByName(cluster, name)
+}
+
 func makeCoreSite(cluster *hdfsv1.HdfsCluster, coreSite map[string]string, ha bool) {
 	if ha {
 		quorumZookeepers := make([]string, 0)
@@ -419,15 +428,11 @@ func (r *HdfsClusterReconciler) constructVolumes(cluster *hdfsv1.HdfsCluster) []
 	return volumes
 }
 
-func (r *HdfsClusterReconciler) constructReadinessProbe(cluster *hdfsv1.HdfsCluster) *corev1.Probe {
+func (r *HdfsClusterReconciler) constructReadinessProbe(cluster *hdfsv1.HdfsCluster, role string) *corev1.Probe {
 	return &corev1.Probe{
 		ProbeHandler: corev1.ProbeHandler{
-			Exec: &corev1.ExecAction{
-				Command: []string{
-					"/bin/bash",
-					"-c",
-					"echo ruok|nc 127.0.0.1 2181",
-				},
+			HTTPGet: &corev1.HTTPGetAction{
+				Port: intstr.FromInt32(getHttpPortByRole(cluster, role)),
 			},
 		},
 		InitialDelaySeconds: DefaultReadinessProbeInitialDelaySeconds,
@@ -438,14 +443,11 @@ func (r *HdfsClusterReconciler) constructReadinessProbe(cluster *hdfsv1.HdfsClus
 	}
 }
 
-func (r *HdfsClusterReconciler) constructLivenessProbe(cluster *hdfsv1.HdfsCluster) *corev1.Probe {
+func (r *HdfsClusterReconciler) constructLivenessProbe(cluster *hdfsv1.HdfsCluster, role string) *corev1.Probe {
 	return &corev1.Probe{
 		ProbeHandler: corev1.ProbeHandler{
-			Exec: &corev1.ExecAction{
-				Command: []string{
-					"/bin/bash",
-					"-c",
-					fmt.Sprintf("/bin/zkServer.sh status")},
+			HTTPGet: &corev1.HTTPGetAction{
+				Port: intstr.FromInt32(getHttpPortByRole(cluster, role)),
 			},
 		},
 		InitialDelaySeconds: DefaultLivenessProbeInitialDelaySeconds,
@@ -472,8 +474,8 @@ func (r *HdfsClusterReconciler) constructPodSpec(cluster *hdfsv1.HdfsCluster) co
 				ImagePullPolicy: corev1.PullPolicy(ic.PullPolicy),
 				Ports:           r.constructContainerPorts(cluster, HDFS_ROLE),
 				Env:             DefaultEnvVars(),
-				ReadinessProbe:  r.constructReadinessProbe(cluster),
-				LivenessProbe:   r.constructLivenessProbe(cluster),
+				ReadinessProbe:  r.constructReadinessProbe(cluster, HDFS_ROLE),
+				LivenessProbe:   r.constructLivenessProbe(cluster, HDFS_ROLE),
 				VolumeMounts:    r.constructVolumeMounts(cluster),
 			},
 		},
@@ -481,6 +483,18 @@ func (r *HdfsClusterReconciler) constructPodSpec(cluster *hdfsv1.HdfsCluster) co
 		RestartPolicy:                 corev1.RestartPolicyAlways,
 		TerminationGracePeriodSeconds: &tgp,
 		Volumes:                       r.constructVolumes(cluster),
+		Affinity: &corev1.Affinity{
+			PodAntiAffinity: &corev1.PodAntiAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
+					{
+						TopologyKey: "kubernetes.io/hostname",
+						LabelSelector: &metav1.LabelSelector{
+							MatchLabels: ClusterResourceLabels(cluster),
+						},
+					},
+				},
+			},
+		},
 	}
 }
 
