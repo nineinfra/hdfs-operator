@@ -3,8 +3,10 @@ package controller
 import (
 	"encoding/xml"
 	hdfsv1 "github.com/nineinfra/hdfs-operator/api/v1"
+	githuberrors "github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -22,10 +24,10 @@ func ClusterResourceName(cluster *hdfsv1.HdfsCluster, suffixs ...string) string 
 	return cluster.Name + DefaultNameSuffix + strings.Join(suffixs, "-")
 }
 
-func ClusterResourceLabels(cluster *hdfsv1.HdfsCluster) map[string]string {
+func ClusterResourceLabels(cluster *hdfsv1.HdfsCluster, role string) map[string]string {
 	return map[string]string{
 		"cluster": cluster.Name,
-		"role":    HDFS_ROLE,
+		"role":    role,
 		"app":     DefaultClusterSign,
 	}
 }
@@ -57,11 +59,40 @@ func CheckHdfsHA(cluster *hdfsv1.HdfsCluster) bool {
 	return false
 }
 
-func DefaultEnvVars() []corev1.EnvVar {
+func GetRefZookeeperInfo(cluster *hdfsv1.HdfsCluster) (int, string, error) {
+	replicas := 0
+	endpoints := ""
+	if cluster.Spec.ClusterRefs != nil {
+		for _, v := range cluster.Spec.ClusterRefs {
+			if v.Type == hdfsv1.ZookeeperClusterType {
+				if v.Conf != nil {
+					if value, ok := v.Conf[hdfsv1.RefClusterZKReplicasKey]; ok {
+						replicas, err := strconv.ParseInt(value, 0, 0)
+						if err != nil {
+							return 0, "", err
+						}
+						if replicas < 3 || replicas%2 == 0 {
+							return 0, "", githuberrors.New("invalid zookeeper replicas for hdfs ha,should be odd num and larger than 3")
+						}
+					}
+					if endpoints, ok := v.Conf[hdfsv1.RefClusterZKEndpointsKey]; ok {
+						listValue := strings.Split(endpoints, ",")
+						if len(listValue) != replicas {
+							return 0, "", githuberrors.New("invalid zookeeper endpoints for hdfs ha")
+						}
+					}
+				}
+			}
+		}
+	}
+	return replicas, endpoints, nil
+}
+
+func DefaultEnvVars(role string) []corev1.EnvVar {
 	return []corev1.EnvVar{
 		{
 			Name:  "HDFS_ROLE",
-			Value: HDFS_ROLE,
+			Value: role,
 		},
 		{
 			Name:  "HDFS_HA",

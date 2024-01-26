@@ -21,14 +21,20 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type ClusterType string
-
-// Different types of clusters.
+type ClusterType string // Different types of clusters.
 const (
 	NameNodeClusterType    ClusterType = "namenode"
 	DataNodeClusterType    ClusterType = "datanode"
 	JournalNodeClusterType ClusterType = "journalnode"
 	HttpFSClusterType      ClusterType = "httpfs"
+	ZookeeperClusterType   ClusterType = "zookeeper"
+)
+
+const (
+	// RefClusterZKReplicasKey  zookeeper replicas.must be odd and >= 3.
+	RefClusterZKReplicasKey string = "reference-zookeeper-replicas"
+	// RefClusterZKEndpointsKey zookeeper endpoints.such as 10.224.1.218:2181,10.224.2.222:2181,10.224.3.253:2181.
+	RefClusterZKEndpointsKey string = "reference-zookeeper-endpoints"
 )
 
 type ResourceConfig struct {
@@ -63,9 +69,13 @@ type ImageConfig struct {
 type Cluster struct {
 	// Version. version of the cluster.
 	Version string `json:"version"`
-	// +kubebuilder:validation:Enum={namenode,datanode,journalnode}
+	// +kubebuilder:validation:Enum={namenode,datanode,journalnode,zookeeper}
 	Type ClusterType `json:"type"`
+	// Name. name of the cluster.
+	// +optional
+	Name string `json:"name"`
 	// Image. image config of the cluster.
+	// +optional
 	Image ImageConfig `json:"image"`
 	// Resource. resouce config of the cluster.
 	// +optional
@@ -90,6 +100,9 @@ type HdfsClusterSpec struct {
 	// K8sConf. k/v configs for the cluster in k8s.such as the cluster domain
 	// +optional
 	K8sConf map[string]string `json:"k8sConf,omitempty"`
+	// ClusterRefs. k/v configs for the cluster in k8s.such as the cluster domain
+	// +optional
+	ClusterRefs []Cluster `json:"clusterRefs,omitempty"`
 	// Clusters. namenode,datanode and journalnode cluster.
 	// +optional
 	Clusters []Cluster `json:"clusters"`

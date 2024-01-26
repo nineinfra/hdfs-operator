@@ -14,22 +14,43 @@ const (
 	// DefaultStorageClass is the default storage class of the zookeeper
 	DefaultStorageClass = "nineinfra-default"
 
+	// DefaultNameService is the default name service for hdfs
 	DefaultNameService = "nineinfra"
 
+	// DefaultWebUIUser is the default web ui user for hdfs
+	DefaultWebUIUser = "root"
+
+	// DefaultQuorumReplicas is the default quorum replicas
 	DefaultQuorumReplicas = 3
-	DefaultHaReplicas     = 2
-	DefaultReplicas       = 1
-	DefaultDiskNum        = 1
 
+	// DefaultHaReplicas is the default ha replicas for namenode
+	DefaultHaReplicas = 2
+
+	// DefaultReplicas is the default replicas for namenode and httpfs
+	DefaultReplicas = 1
+
+	// DefaultDiskNum is the default disk num
+	DefaultDiskNum = 1
+
+	// DefaultClusterDomainName is the default domain name key for the k8s cluster
 	DefaultClusterDomainName = "clusterDomain"
-	DefaultClusterDomain     = "cluster.local"
 
+	// DefaultClusterDomain is the default domain name value for the k8s cluster
+	DefaultClusterDomain = "cluster.local"
+
+	// DefaultLogVolumeName is the default log volume name
 	DefaultLogVolumeName = "log"
 
-	DefaultConfigNameSuffix      = "-config"
+	// DefaultConfigNameSuffix is the default config name suffix
+	DefaultConfigNameSuffix = "-config"
+
+	// DefaultHeadlessSvcNameSuffix is the default headless service suffix
 	DefaultHeadlessSvcNameSuffix = "-headless"
 
+	// DefaultCoreSiteFile is the default core site file name
 	DefaultCoreSiteFile = "core-site.xml"
+
+	// DefaultHdfsSiteFile is the default hdfs site file name
 	DefaultHdfsSiteFile = "hdfs-site.xml"
 
 	// DefaultTerminationGracePeriod is the default time given before the
@@ -140,4 +161,14 @@ var DefaultNamedPort = map[string]int32{
 	"dn-ipc":   9867,
 	"dn-addr":  9866,
 	"dn-https": 9865,
+}
+
+var CustomizableHdfsSiteConfKeyPrefixs = []string{
+	"dfs.ha.namenodes",
+	"dfs.namenode.rpc-address",
+	"dfs.client.failover.proxy.provider",
+}
+
+var CustomizableCoreSiteConfKeyPrefixs = []string{
+	"hadoop.security.crypto.codec.classes",
 }

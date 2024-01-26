@@ -20,6 +20,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/go-logr/logr"
+	githuberrors "github.com/pkg/errors"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -86,7 +88,7 @@ func (r *HdfsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 func (r *HdfsClusterReconciler) reconcileClusterStatus(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
 	cluster.Status.Init()
 	existsPods := &corev1.PodList{}
-	labelSelector := labels.SelectorFromSet(ClusterResourceLabels(cluster))
+	labelSelector := labels.SelectorFromSet(ClusterResourceLabels(cluster, ""))
 	listOps := &client.ListOptions{
 		Namespace:     cluster.Namespace,
 		LabelSelector: labelSelector,
@@ -213,24 +215,53 @@ func (r *HdfsClusterReconciler) reconcileConfigMap(ctx context.Context, cluster 
 	return nil
 }
 
-func (r *HdfsClusterReconciler) reconcileNamenode(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
-	HDFS_ROLE = HdfsRoleNameNode
+func (r *HdfsClusterReconciler) reconcileHdfsRole(ctx context.Context, cluster *hdfsv1.HdfsCluster, desiredSts *appsv1.StatefulSet, role string, logger logr.Logger) (err error) {
+	existsSts := &appsv1.StatefulSet{}
+	err = r.Client.Get(context.TODO(), types.NamespacedName{Name: desiredSts.Name, Namespace: desiredSts.Namespace}, existsSts)
+	if err != nil && errors.IsNotFound(err) {
+		logger.Info(fmt.Sprintf("Creating a new %s StatefulSet", role))
+		err = r.Client.Create(context.TODO(), desiredSts)
+		if err != nil {
+			return err
+		}
+		return nil
+	} else if err != nil {
+		return err
+	}
+	logger.Info(fmt.Sprintf("Creating a new %s successfully", role))
 	return nil
+}
+
+func (r *HdfsClusterReconciler) reconcileNamenode(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
+	desiredSts, err := r.constructWorkload(cluster, HdfsRoleNameNode)
+	if err != nil {
+		return err
+	}
+	return r.reconcileHdfsRole(ctx, cluster, desiredSts, HdfsRoleNameNode, logger)
 }
 
 func (r *HdfsClusterReconciler) reconcileDatanode(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
-	HDFS_ROLE = HdfsRoleDataNode
-	return nil
+	desiredSts, err := r.constructWorkload(cluster, HdfsRoleDataNode)
+	if err != nil {
+		return err
+	}
+	return r.reconcileHdfsRole(ctx, cluster, desiredSts, HdfsRoleDataNode, logger)
 }
 
 func (r *HdfsClusterReconciler) reconcileJournalnode(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
-	HDFS_ROLE = HdfsRoleJournalNode
-	return nil
+	desiredSts, err := r.constructWorkload(cluster, HdfsRoleJournalNode)
+	if err != nil {
+		return err
+	}
+	return r.reconcileHdfsRole(ctx, cluster, desiredSts, HdfsRoleJournalNode, logger)
 }
 
 func (r *HdfsClusterReconciler) reconcileHttpFS(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
-	HDFS_ROLE = HdfsRoleHttpFS
-	return nil
+	desiredSts, err := r.constructWorkload(cluster, HdfsRoleHttpFS)
+	if err != nil {
+		return err
+	}
+	return r.reconcileHdfsRole(ctx, cluster, desiredSts, HdfsRoleHttpFS, logger)
 }
 
 func (r *HdfsClusterReconciler) reconcileWorkload(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
@@ -248,7 +279,24 @@ func (r *HdfsClusterReconciler) reconcileWorkload(ctx context.Context, cluster *
 	return nil
 }
 
+func (r *HdfsClusterReconciler) checkClusterInvalid(cluster *hdfsv1.HdfsCluster) error {
+	if CheckHdfsHA(cluster) {
+		replicas, endpoints, err := GetRefZookeeperInfo(cluster)
+		if err != nil {
+			return err
+		} else {
+			if replicas == 0 || endpoints == "" {
+				return githuberrors.New("no zookeeper config provided,include reference-zookeeper-replicas and reference-zookeeper-endpoints")
+			}
+		}
+	}
+	return nil
+}
+
 func (r *HdfsClusterReconciler) reconcileClusters(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) error {
+	if err := r.checkClusterInvalid(cluster); err != nil {
+		return err
+	}
 	for _, fun := range []reconcileFun{
 		r.reconcileConfigMap,
 		r.reconcileWorkload,
