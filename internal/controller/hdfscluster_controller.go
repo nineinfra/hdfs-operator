@@ -24,14 +24,15 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
-	"strings"
-
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"strings"
+	"time"
 
 	hdfsv1 "github.com/nineinfra/hdfs-operator/api/v1"
 )
@@ -86,59 +87,93 @@ func (r *HdfsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 }
 
 func (r *HdfsClusterReconciler) reconcileClusterStatus(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
-	cluster.Status.Init()
-	existsPods := &corev1.PodList{}
-	labelSelector := labels.SelectorFromSet(ClusterResourceLabels(cluster, ""))
-	listOps := &client.ListOptions{
-		Namespace:     cluster.Namespace,
-		LabelSelector: labelSelector,
+
+	if cluster.Status.ClustersStatus == nil {
+		cluster.Status.ClustersStatus = make([]hdfsv1.ClusterStatus, 0)
 	}
-	err = r.Client.List(context.TODO(), existsPods, listOps)
-	if err != nil {
-		return err
+	var roleList = []string{
+		HdfsRoleNameNode,
+		HdfsRoleDataNode,
+		HdfsRoleJournalNode,
+		//HdfsRoleHttpFS,
 	}
-	var (
-		readyMembers   []string
-		unreadyMembers []string
-	)
-	for _, p := range existsPods.Items {
-		ready := true
-		for _, c := range p.Status.ContainerStatuses {
-			if !c.Ready {
-				ready = false
+	for _, role := range roleList {
+		cluster.Status.Init(role)
+		existsPods := &corev1.PodList{}
+		labelSelector := labels.SelectorFromSet(ClusterResourceLabels(cluster, role))
+		listOps := &client.ListOptions{
+			Namespace:     cluster.Namespace,
+			LabelSelector: labelSelector,
+		}
+		err = r.Client.List(context.TODO(), existsPods, listOps)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				continue
+			}
+			return err
+		}
+		var (
+			readyMembers   []string
+			unreadyMembers []string
+		)
+		for _, p := range existsPods.Items {
+			ready := true
+			for _, c := range p.Status.ContainerStatuses {
+				if !c.Ready {
+					ready = false
+				}
+			}
+			if ready {
+				readyMembers = append(readyMembers, p.Name)
+			} else {
+				unreadyMembers = append(unreadyMembers, p.Name)
 			}
 		}
-		if ready {
-			readyMembers = append(readyMembers, p.Name)
-		} else {
-			unreadyMembers = append(unreadyMembers, p.Name)
+		bFlag := false
+		for _, cs := range cluster.Status.ClustersStatus {
+			if cs.Type == hdfsv1.ClusterType(role) {
+				cs.Members.Ready = readyMembers
+				cs.Members.Unready = unreadyMembers
+				cs.ReadyReplicas = int32(len(readyMembers))
+				if cs.ReadyReplicas == GetReplicas(cluster, role) {
+					cluster.Status.SetPodsReadyConditionTrue(role)
+				} else {
+					cluster.Status.SetPodsReadyConditionFalse(role)
+				}
+				if cs.CurrentVersion == "" && cluster.Status.IsClusterInReadyState(role) {
+					cs.CurrentVersion = cluster.Spec.Image.Tag
+				}
+				bFlag = true
+			}
 		}
-	}
-	cluster.Status.Members.Ready = readyMembers
-	cluster.Status.Members.Unready = unreadyMembers
-
-	logger.Info("Updating zookeeper status")
-	if cluster.Status.ReadyReplicas == cluster.Spec.Resource.Replicas {
-		cluster.Status.SetPodsReadyConditionTrue()
-	} else {
-		cluster.Status.SetPodsReadyConditionFalse()
-	}
-	if cluster.Status.CurrentVersion == "" && cluster.Status.IsClusterInReadyState() {
-		cluster.Status.CurrentVersion = cluster.Spec.Image.Tag
+		if !bFlag {
+			cs := hdfsv1.ClusterStatus{
+				Type: hdfsv1.ClusterType(role),
+				Members: hdfsv1.MembersStatus{
+					Ready:   readyMembers,
+					Unready: unreadyMembers,
+				},
+				ReadyReplicas: int32(len(readyMembers)),
+			}
+			if cs.ReadyReplicas == GetReplicas(cluster, role) {
+				cluster.Status.SetPodsReadyConditionTrue(role)
+			} else {
+				cluster.Status.SetPodsReadyConditionFalse(role)
+			}
+			if cs.CurrentVersion == "" && cluster.Status.IsClusterInReadyState(role) {
+				cs.CurrentVersion = cluster.Spec.Image.Tag
+			}
+			cluster.Status.ClustersStatus = append(cluster.Status.ClustersStatus, cs)
+		}
 	}
 	return r.Client.Status().Update(context.TODO(), cluster)
 }
 
-func (r *HdfsClusterReconciler) reconcileHeadlessService(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
-	desiredSvc, err := r.constructHeadlessService(cluster, HDFS_ROLE)
-	if err != nil {
-		return err
-	}
-
+func (r *HdfsClusterReconciler) reconcileHdfsHeadlessService(ctx context.Context, cluster *hdfsv1.HdfsCluster, desiredSvc *corev1.Service, role string, logger logr.Logger) (err error) {
 	existsSvc := &corev1.Service{}
 	err = r.Client.Get(context.TODO(), types.NamespacedName{Name: desiredSvc.Name, Namespace: desiredSvc.Namespace}, existsSvc)
 	if err != nil && errors.IsNotFound(err) {
-		logger.Info("Creating a new headless service")
+		logger.Info(fmt.Sprintf("Creating a new headless service,Name:%s,Role:%s", desiredSvc.Name, role))
 		err = r.Client.Create(context.TODO(), desiredSvc)
 		if err != nil {
 			return err
@@ -147,7 +182,7 @@ func (r *HdfsClusterReconciler) reconcileHeadlessService(ctx context.Context, cl
 	} else if err != nil {
 		return err
 	} else {
-		logger.Info("Updating existing headless service")
+		logger.Info(fmt.Sprintf("Updating existing headless service,Name:%s,Role:%s", desiredSvc.Name, role))
 		existsSvc.Spec.Ports = desiredSvc.Spec.Ports
 		existsSvc.Spec.Type = desiredSvc.Spec.Type
 		err = r.Client.Update(context.TODO(), existsSvc)
@@ -158,16 +193,62 @@ func (r *HdfsClusterReconciler) reconcileHeadlessService(ctx context.Context, cl
 	return nil
 }
 
-func (r *HdfsClusterReconciler) reconcileService(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
-	desiredSvc, err := r.constructService(cluster, HDFS_ROLE)
+func (r *HdfsClusterReconciler) reconcileNamenodeHeadlessService(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
+	desiredSvc, err := r.constructHeadlessService(cluster, HdfsRoleNameNode)
 	if err != nil {
 		return err
 	}
 
+	return r.reconcileHdfsHeadlessService(ctx, cluster, desiredSvc, HdfsRoleNameNode, logger)
+}
+
+func (r *HdfsClusterReconciler) reconcileDatanodeHeadlessService(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
+	desiredSvc, err := r.constructHeadlessService(cluster, HdfsRoleDataNode)
+	if err != nil {
+		return err
+	}
+
+	return r.reconcileHdfsHeadlessService(ctx, cluster, desiredSvc, HdfsRoleDataNode, logger)
+}
+
+func (r *HdfsClusterReconciler) reconcileJournalnodeHeadlessService(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
+	desiredSvc, err := r.constructHeadlessService(cluster, HdfsRoleJournalNode)
+	if err != nil {
+		return err
+	}
+
+	return r.reconcileHdfsHeadlessService(ctx, cluster, desiredSvc, HdfsRoleJournalNode, logger)
+}
+
+func (r *HdfsClusterReconciler) reconcileHttpFSHeadlessService(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
+	desiredSvc, err := r.constructHeadlessService(cluster, HdfsRoleHttpFS)
+	if err != nil {
+		return err
+	}
+
+	return r.reconcileHdfsHeadlessService(ctx, cluster, desiredSvc, HdfsRoleHttpFS, logger)
+}
+
+func (r *HdfsClusterReconciler) reconcileHeadlessService(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
+	for _, fun := range []reconcileFun{
+		r.reconcileNamenodeHeadlessService,
+		r.reconcileDatanodeHeadlessService,
+		r.reconcileJournalnodeHeadlessService,
+		//r.reconcileHttpFSHeadlessService,
+	} {
+		if err := fun(ctx, cluster, logger); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *HdfsClusterReconciler) reconcileHdfsService(ctx context.Context, cluster *hdfsv1.HdfsCluster, desiredSvc *corev1.Service, role string, logger logr.Logger) (err error) {
 	existsSvc := &corev1.Service{}
 	err = r.Client.Get(context.TODO(), types.NamespacedName{Name: desiredSvc.Name, Namespace: desiredSvc.Namespace}, existsSvc)
 	if err != nil && errors.IsNotFound(err) {
-		logger.Info("Creating a new service")
+		logger.Info(fmt.Sprintf("Creating a new service,Name:%s,Role:%s", desiredSvc.Name, role))
 		err = r.Client.Create(context.TODO(), desiredSvc)
 		if err != nil {
 			return err
@@ -176,7 +257,7 @@ func (r *HdfsClusterReconciler) reconcileService(ctx context.Context, cluster *h
 	} else if err != nil {
 		return err
 	} else {
-		logger.Info("Updating existing service")
+		logger.Info(fmt.Sprintf("Updating existing service,Name:%s,Role:%s", existsSvc.Name, role))
 		existsSvc.Spec.Ports = desiredSvc.Spec.Ports
 		existsSvc.Spec.Type = desiredSvc.Spec.Type
 		err = r.Client.Update(context.TODO(), existsSvc)
@@ -184,6 +265,57 @@ func (r *HdfsClusterReconciler) reconcileService(ctx context.Context, cluster *h
 			return err
 		}
 	}
+	return nil
+}
+
+func (r *HdfsClusterReconciler) reconcileNamenodeService(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
+	desiredSvc, err := r.constructService(cluster, HdfsRoleNameNode)
+	if err != nil {
+		return err
+	}
+
+	return r.reconcileHdfsService(ctx, cluster, desiredSvc, HdfsRoleNameNode, logger)
+}
+
+func (r *HdfsClusterReconciler) reconcileDatanodeService(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
+	desiredSvc, err := r.constructService(cluster, HdfsRoleDataNode)
+	if err != nil {
+		return err
+	}
+
+	return r.reconcileHdfsService(ctx, cluster, desiredSvc, HdfsRoleDataNode, logger)
+}
+
+func (r *HdfsClusterReconciler) reconcileJournalnodeService(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
+	desiredSvc, err := r.constructService(cluster, HdfsRoleJournalNode)
+	if err != nil {
+		return err
+	}
+
+	return r.reconcileHdfsService(ctx, cluster, desiredSvc, HdfsRoleJournalNode, logger)
+}
+
+func (r *HdfsClusterReconciler) reconcileHttpFSService(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
+	desiredSvc, err := r.constructService(cluster, HdfsRoleHttpFS)
+	if err != nil {
+		return err
+	}
+
+	return r.reconcileHdfsService(ctx, cluster, desiredSvc, HdfsRoleHttpFS, logger)
+}
+
+func (r *HdfsClusterReconciler) reconcileService(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
+	for _, fun := range []reconcileFun{
+		r.reconcileNamenodeService,
+		r.reconcileDatanodeService,
+		r.reconcileJournalnodeService,
+		//r.reconcileHttpFSService,
+	} {
+		if err := fun(ctx, cluster, logger); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -195,7 +327,7 @@ func (r *HdfsClusterReconciler) reconcileConfigMap(ctx context.Context, cluster 
 	existsCm := &corev1.ConfigMap{}
 	err = r.Client.Get(context.TODO(), types.NamespacedName{Name: desiredCm.Name, Namespace: desiredCm.Namespace}, existsCm)
 	if err != nil && errors.IsNotFound(err) {
-		logger.Info("Creating a new Zookeeper Config Map")
+		logger.Info(fmt.Sprintf("Creating a new Config Map,Name:%s", desiredCm.Name))
 		err = r.Client.Create(context.TODO(), desiredCm)
 		if err != nil {
 			return err
@@ -204,7 +336,7 @@ func (r *HdfsClusterReconciler) reconcileConfigMap(ctx context.Context, cluster 
 	} else if err != nil {
 		return err
 	} else {
-		logger.Info("Updating existing Config Map")
+		logger.Info(fmt.Sprintf("Updating existing Config Map,Name:%s", existsCm.Name))
 		existsCm.Data = desiredCm.Data
 		err = r.Client.Update(context.TODO(), existsCm)
 		if err != nil {
@@ -237,6 +369,59 @@ func (r *HdfsClusterReconciler) reconcileNamenode(ctx context.Context, cluster *
 	if err != nil {
 		return err
 	}
+	var waitErr error = nil
+	if CheckHdfsHA(cluster) {
+		//wait journalnode ready
+		condition := make(chan struct{})
+		go func(clus *hdfsv1.HdfsCluster, waitErr *error) {
+			waitSeconds := 0
+			for {
+				LogInfoInterval(ctx, 5, "Try to get journal node endpoints...")
+				jnEndpoints := &corev1.Endpoints{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      ClusterResourceName(clus, fmt.Sprintf("-%s", HdfsRoleJournalNode)),
+						Namespace: clus.Namespace,
+						Labels:    ClusterResourceLabels(clus, HdfsRoleJournalNode),
+					},
+				}
+				existsEndpoints := &corev1.Endpoints{}
+				err = r.Get(context.TODO(), types.NamespacedName{Name: jnEndpoints.Name, Namespace: jnEndpoints.Namespace}, existsEndpoints)
+				if err != nil && errors.IsNotFound(err) {
+					waitSeconds += 1
+					if waitSeconds < DefaultMaxWaitSeconds {
+						time.Sleep(time.Second)
+						continue
+					} else {
+						logger.Error(err, "wait for journal node service timeout")
+						*waitErr = githuberrors.New("wait for journal node service timeout")
+						close(condition)
+						break
+					}
+				} else if err != nil {
+					logger.Error(err, "get journal node endpoints failed")
+				}
+				needReplicas := GetReplicas(clus, HdfsRoleJournalNode)
+				logger.Info(fmt.Sprintf("subsets:%v,needReplicas:%d\n", existsEndpoints.Subsets, needReplicas))
+				if len(existsEndpoints.Subsets) > 0 {
+					logger.Info(fmt.Sprintf("addresses in subset 0:%v and len:%d\n",
+						existsEndpoints.Subsets[0].Addresses,
+						len(existsEndpoints.Subsets[0].Addresses)))
+				}
+				if len(existsEndpoints.Subsets) == 0 ||
+					(len(existsEndpoints.Subsets) > 0 &&
+						len(existsEndpoints.Subsets[0].Addresses) < int(needReplicas)) {
+					time.Sleep(time.Second)
+					continue
+				}
+				close(condition)
+				break
+			}
+		}(cluster, &waitErr)
+		<-condition
+	}
+	if waitErr != nil {
+		return waitErr
+	}
 	return r.reconcileHdfsRole(ctx, cluster, desiredSts, HdfsRoleNameNode, logger)
 }
 
@@ -249,11 +434,14 @@ func (r *HdfsClusterReconciler) reconcileDatanode(ctx context.Context, cluster *
 }
 
 func (r *HdfsClusterReconciler) reconcileJournalnode(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
-	desiredSts, err := r.constructWorkload(cluster, HdfsRoleJournalNode)
-	if err != nil {
-		return err
+	if CheckHdfsHA(cluster) {
+		desiredSts, err := r.constructWorkload(cluster, HdfsRoleJournalNode)
+		if err != nil {
+			return err
+		}
+		return r.reconcileHdfsRole(ctx, cluster, desiredSts, HdfsRoleJournalNode, logger)
 	}
-	return r.reconcileHdfsRole(ctx, cluster, desiredSts, HdfsRoleJournalNode, logger)
+	return nil
 }
 
 func (r *HdfsClusterReconciler) reconcileHttpFS(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
@@ -266,10 +454,10 @@ func (r *HdfsClusterReconciler) reconcileHttpFS(ctx context.Context, cluster *hd
 
 func (r *HdfsClusterReconciler) reconcileWorkload(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
 	for _, fun := range []reconcileFun{
+		r.reconcileJournalnode,
 		r.reconcileNamenode,
 		r.reconcileDatanode,
-		r.reconcileJournalnode,
-		r.reconcileHttpFS,
+		//r.reconcileHttpFS,
 	} {
 		if err := fun(ctx, cluster, logger); err != nil {
 			return err
@@ -289,6 +477,7 @@ func (r *HdfsClusterReconciler) checkClusterInvalid(cluster *hdfsv1.HdfsCluster)
 				return githuberrors.New("no zookeeper config provided,include reference-zookeeper-replicas and reference-zookeeper-endpoints")
 			}
 		}
+		HDFS_HA = "true"
 	}
 	return nil
 }
@@ -299,9 +488,9 @@ func (r *HdfsClusterReconciler) reconcileClusters(ctx context.Context, cluster *
 	}
 	for _, fun := range []reconcileFun{
 		r.reconcileConfigMap,
-		r.reconcileWorkload,
 		r.reconcileService,
 		r.reconcileHeadlessService,
+		r.reconcileWorkload,
 		r.reconcileClusterStatus,
 	} {
 		if err := fun(ctx, cluster, logger); err != nil {

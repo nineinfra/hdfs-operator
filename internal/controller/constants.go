@@ -4,7 +4,7 @@ const (
 	// CurrentHdfsVersion
 	// hdfs-site k/v list.https://hadoop.apache.org/docs/r3.3.6/hadoop-project-dist/hadoop-hdfs/hdfs-default.xml
 	// core-site k/v list.https://hadoop.apache.org/docs/r3.3.6/hadoop-project-dist/hadoop-common/core-default.xml
-	CurrentHdfsVersion = "3.3.6"
+	CurrentHdfsVersion = "v3.3.6"
 	// DefaultNameSuffix is the default name suffix of the resources of the zookeeper
 	DefaultNameSuffix = "-hdfs"
 
@@ -32,6 +32,9 @@ const (
 	// DefaultDiskNum is the default disk num
 	DefaultDiskNum = 1
 
+	// DefaultMaxWaitSeconds is the default disk num
+	DefaultMaxWaitSeconds = 600
+
 	// DefaultClusterDomainName is the default domain name key for the k8s cluster
 	DefaultClusterDomainName = "clusterDomain"
 
@@ -42,10 +45,10 @@ const (
 	DefaultLogVolumeName = "log"
 
 	// DefaultConfigNameSuffix is the default config name suffix
-	DefaultConfigNameSuffix = "-config"
+	DefaultConfigNameSuffix = "config"
 
 	// DefaultHeadlessSvcNameSuffix is the default headless service suffix
-	DefaultHeadlessSvcNameSuffix = "-headless"
+	DefaultHeadlessSvcNameSuffix = "headless"
 
 	// DefaultCoreSiteFile is the default core site file name
 	DefaultCoreSiteFile = "core-site.xml"
@@ -109,18 +112,18 @@ const (
 	HdfsRoleDataNode        = "datanode"
 	HdfsRoleJournalNode     = "journalnode"
 	HdfsRoleHttpFS          = "httpfs"
+	HdfsRoleAll             = "hdfs"
 	HdfsHomeDir             = "/opt/hadoop"
 	HdfsConfDir             = HdfsHomeDir + "/conf"
 	HdfsDataPath            = HdfsHomeDir + "/data"
 	HdfsLogsDir             = HdfsHomeDir + "/logs"
 	HdfsDiskPathPrefix      = "disk"
-	CoreSiteDefaultConfFile = HdfsConfDir + "/" + "core-site.xml.default"
-	HdfsSiteDefaultConfFile = HdfsConfDir + "/" + "hdfs-site.xml.default"
+	CoreSiteDefaultConfFile = "/hdfs/" + CurrentHdfsVersion + "/" + "core-site.xml.default"
+	HdfsSiteDefaultConfFile = "/hdfs/" + CurrentHdfsVersion + "/" + "hdfs-site.xml.default"
 )
 
 var (
-	HDFS_ROLE = "namenode"
-	HDFS_HA   = "false"
+	HDFS_HA = "false"
 )
 
 var HDFSRole2Prefix = map[string]string{

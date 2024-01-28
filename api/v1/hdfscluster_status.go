@@ -12,9 +12,9 @@ const (
 	ClusterConditionUpgrading                      = "Upgrading"
 	ClusterConditionError                          = "Error"
 
-	// UpdatingZookeeperReason Reasons for cluster upgrading condition
-	UpdatingZookeeperReason = "Updating Zookeeper"
-	UpgradeErrorReason      = "Upgrade Error"
+	// UpdatingClusterReason Reasons for cluster upgrading condition
+	UpdatingClusterReason = "Updating Cluster"
+	UpgradeErrorReason    = "Upgrade Error"
 )
 
 // MembersStatus is the status of the members of the cluster with both
@@ -26,10 +26,10 @@ type MembersStatus struct {
 	Unready []string `json:"unready,omitempty"`
 }
 
-// ClusterCondition shows the current condition of a Zookeeper cluster.
+// ClusterCondition shows the current condition of a cluster.
 // Comply with k8s API conventions
 type ClusterCondition struct {
-	// Type of Zookeeper cluster condition.
+	// Type of cluster condition.
 	Type ClusterConditionType `json:"type,omitempty"`
 
 	// Status of the condition, one of True, False, Unknown.
@@ -48,9 +48,14 @@ type ClusterCondition struct {
 	LastTransitionTime string `json:"lastTransitionTime,omitempty"`
 }
 
-// HdfsClusterStatus defines the observed state of HdfsCluster
-type HdfsClusterStatus struct {
-	// Members is the zookeeper members in the cluster
+type ClusterStatus struct {
+	// Name is the name of the cluster
+	Name string `json:"name"`
+
+	// Type is the type of the cluster
+	Type ClusterType `json:"type"`
+
+	// Members is the cluster members in the cluster
 	Members MembersStatus `json:"members,omitempty"`
 
 	// Replicas is the number of desired replicas in the cluster
@@ -76,17 +81,23 @@ type HdfsClusterStatus struct {
 	Conditions []ClusterCondition `json:"conditions,omitempty"`
 }
 
-func (zs *HdfsClusterStatus) Init() {
+// HdfsClusterStatus defines the observed state of HdfsCluster
+type HdfsClusterStatus struct {
+	ClustersStatus []ClusterStatus `json:"clustersStatus"`
+}
+
+func (zs *HdfsClusterStatus) Init(role string) {
 	// Initialise conditions
 	conditionTypes := []ClusterConditionType{
 		ClusterConditionPodsReady,
 		ClusterConditionUpgrading,
 		ClusterConditionError,
 	}
+
 	for _, conditionType := range conditionTypes {
-		if _, condition := zs.GetClusterCondition(conditionType); condition == nil {
+		if _, condition := zs.GetClusterCondition(conditionType, role); condition == nil {
 			c := newClusterCondition(conditionType, corev1.ConditionFalse, "", "")
-			zs.setClusterCondition(*c)
+			zs.setClusterCondition(*c, role)
 		}
 	}
 }
@@ -102,51 +113,59 @@ func newClusterCondition(condType ClusterConditionType, status corev1.ConditionS
 	}
 }
 
-func (zs *HdfsClusterStatus) SetPodsReadyConditionTrue() {
+func (zs *HdfsClusterStatus) SetPodsReadyConditionTrue(role string) {
 	c := newClusterCondition(ClusterConditionPodsReady, corev1.ConditionTrue, "", "")
-	zs.setClusterCondition(*c)
+	zs.setClusterCondition(*c, role)
 }
 
-func (zs *HdfsClusterStatus) SetPodsReadyConditionFalse() {
+func (zs *HdfsClusterStatus) SetPodsReadyConditionFalse(role string) {
 	c := newClusterCondition(ClusterConditionPodsReady, corev1.ConditionFalse, "", "")
-	zs.setClusterCondition(*c)
+	zs.setClusterCondition(*c, role)
 }
 
-func (zs *HdfsClusterStatus) SetUpgradingConditionTrue(reason, message string) {
+func (zs *HdfsClusterStatus) SetUpgradingConditionTrue(reason, message string, role string) {
 	c := newClusterCondition(ClusterConditionUpgrading, corev1.ConditionTrue, reason, message)
-	zs.setClusterCondition(*c)
+	zs.setClusterCondition(*c, role)
 }
 
-func (zs *HdfsClusterStatus) SetUpgradingConditionFalse() {
+func (zs *HdfsClusterStatus) SetUpgradingConditionFalse(role string) {
 	c := newClusterCondition(ClusterConditionUpgrading, corev1.ConditionFalse, "", "")
-	zs.setClusterCondition(*c)
+	zs.setClusterCondition(*c, role)
 }
 
-func (zs *HdfsClusterStatus) SetErrorConditionTrue(reason, message string) {
+func (zs *HdfsClusterStatus) SetErrorConditionTrue(reason, message string, role string) {
 	c := newClusterCondition(ClusterConditionError, corev1.ConditionTrue, reason, message)
-	zs.setClusterCondition(*c)
+	zs.setClusterCondition(*c, role)
 }
 
-func (zs *HdfsClusterStatus) SetErrorConditionFalse() {
+func (zs *HdfsClusterStatus) SetErrorConditionFalse(role string) {
 	c := newClusterCondition(ClusterConditionError, corev1.ConditionFalse, "", "")
-	zs.setClusterCondition(*c)
+	zs.setClusterCondition(*c, role)
 }
 
-func (zs *HdfsClusterStatus) GetClusterCondition(t ClusterConditionType) (int, *ClusterCondition) {
-	for i, c := range zs.Conditions {
-		if t == c.Type {
-			return i, &c
+func (zs *HdfsClusterStatus) GetClusterCondition(t ClusterConditionType, role string) (int, *ClusterCondition) {
+	for _, cs := range zs.ClustersStatus {
+		if cs.Type == ClusterType(role) {
+			for i, c := range cs.Conditions {
+				if t == c.Type {
+					return i, &c
+				}
+			}
 		}
 	}
 	return -1, nil
 }
 
-func (zs *HdfsClusterStatus) setClusterCondition(newCondition ClusterCondition) {
+func (zs *HdfsClusterStatus) setClusterCondition(newCondition ClusterCondition, role string) {
 	now := time.Now().Format(time.RFC3339)
-	position, existingCondition := zs.GetClusterCondition(newCondition.Type)
+	position, existingCondition := zs.GetClusterCondition(newCondition.Type, role)
 
 	if existingCondition == nil {
-		zs.Conditions = append(zs.Conditions, newCondition)
+		for _, cs := range zs.ClustersStatus {
+			if cs.Type == ClusterType(role) {
+				cs.Conditions = append(cs.Conditions, newCondition)
+			}
+		}
 		return
 	}
 
@@ -161,12 +180,15 @@ func (zs *HdfsClusterStatus) setClusterCondition(newCondition ClusterCondition) 
 		existingCondition.Message = newCondition.Message
 		existingCondition.LastUpdateTime = now
 	}
-
-	zs.Conditions[position] = *existingCondition
+	for _, cs := range zs.ClustersStatus {
+		if cs.Type == ClusterType(role) {
+			cs.Conditions[position] = *existingCondition
+		}
+	}
 }
 
-func (zs *HdfsClusterStatus) IsClusterInUpgradeFailedState() bool {
-	_, errorCondition := zs.GetClusterCondition(ClusterConditionError)
+func (zs *HdfsClusterStatus) IsClusterInUpgradeFailedState(role string) bool {
+	_, errorCondition := zs.GetClusterCondition(ClusterConditionError, role)
 	if errorCondition == nil {
 		return false
 	}
@@ -176,8 +198,8 @@ func (zs *HdfsClusterStatus) IsClusterInUpgradeFailedState() bool {
 	return false
 }
 
-func (zs *HdfsClusterStatus) IsClusterInUpgradingState() bool {
-	_, upgradeCondition := zs.GetClusterCondition(ClusterConditionUpgrading)
+func (zs *HdfsClusterStatus) IsClusterInUpgradingState(role string) bool {
+	_, upgradeCondition := zs.GetClusterCondition(ClusterConditionUpgrading, role)
 	if upgradeCondition == nil {
 		return false
 	}
@@ -187,24 +209,24 @@ func (zs *HdfsClusterStatus) IsClusterInUpgradingState() bool {
 	return false
 }
 
-func (zs *HdfsClusterStatus) IsClusterInReadyState() bool {
-	_, readyCondition := zs.GetClusterCondition(ClusterConditionPodsReady)
+func (zs *HdfsClusterStatus) IsClusterInReadyState(role string) bool {
+	_, readyCondition := zs.GetClusterCondition(ClusterConditionPodsReady, role)
 	if readyCondition != nil && readyCondition.Status == corev1.ConditionTrue {
 		return true
 	}
 	return false
 }
 
-func (zs *HdfsClusterStatus) UpdateProgress(reason, updatedReplicas string) {
-	if zs.IsClusterInUpgradingState() {
-		// Set the upgrade condition reason to be UpgradingZookeeperReason, message to be the upgradedReplicas
-		zs.SetUpgradingConditionTrue(reason, updatedReplicas)
+func (zs *HdfsClusterStatus) UpdateProgress(reason, updatedReplicas string, role string) {
+	if zs.IsClusterInUpgradingState(role) {
+		// Set the upgrade condition reason to be UpgradingClusterReason, message to be the upgradedReplicas
+		zs.SetUpgradingConditionTrue(reason, updatedReplicas, role)
 	}
 }
 
-func (zs *HdfsClusterStatus) GetLastCondition() (lastCondition *ClusterCondition) {
-	if zs.IsClusterInUpgradingState() {
-		_, lastCondition := zs.GetClusterCondition(ClusterConditionUpgrading)
+func (zs *HdfsClusterStatus) GetLastCondition(role string) (lastCondition *ClusterCondition) {
+	if zs.IsClusterInUpgradingState(role) {
+		_, lastCondition := zs.GetClusterCondition(ClusterConditionUpgrading, role)
 		return lastCondition
 	}
 	// nothing to do if we are not upgrading

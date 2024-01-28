@@ -28,29 +28,6 @@ func capacityPerVolume(capacity string) (*resource.Quantity, error) {
 	return resource.NewQuantity(totalQuantity.Value(), totalQuantity.Format), nil
 }
 
-func getReplicas(cluster *hdfsv1.HdfsCluster, role string) int32 {
-	if cluster.Spec.Clusters != nil {
-		for _, v := range cluster.Spec.Clusters {
-			if v.Type == hdfsv1.ClusterType(role) {
-				if v.Resource.Replicas != 0 {
-					return v.Resource.Replicas
-				}
-			}
-		}
-	}
-	switch role {
-	case HdfsRoleDataNode:
-		if cluster.Spec.Resource.Replicas != 0 {
-			return cluster.Spec.Resource.Replicas
-		}
-	case HdfsRoleNameNode:
-		return DefaultReplicas
-	case HdfsRoleHttpFS:
-		return DefaultReplicas
-	}
-	return DefaultQuorumReplicas
-}
-
 func getDiskNum(cluster *hdfsv1.HdfsCluster, role string) int32 {
 	if role == HdfsRoleDataNode {
 		if cluster.Spec.Clusters != nil {
@@ -102,9 +79,9 @@ func makeCoreSite(cluster *hdfsv1.HdfsCluster, coreSite map[string]string, ha bo
 	} else {
 		coreSite["fs.defaultFS"] = fmt.Sprintf(
 			"hdfs://%s-namenode-%d.%s-namenode.%s.svc.%s:%d",
-			cluster.Name,
+			ClusterResourceName(cluster),
 			0,
-			cluster.Name,
+			ClusterResourceName(cluster),
 			cluster.Namespace,
 			GetClusterDomain(cluster),
 			getPortByName(cluster, "nn-rpc"))
@@ -139,17 +116,17 @@ func makeHdfsSite(cluster *hdfsv1.HdfsCluster, hdfsSite map[string]string, ha bo
 			for i := 0; i < DefaultHaReplicas; i++ {
 				hdfsSite[fmt.Sprintf("dfs.namenode.rpc-address.%s.nn%d", DefaultNameService, i)] = fmt.Sprintf(
 					"%s-namenode-%d.%s-namenode.%s.svc.%s:%d",
-					cluster.Name,
+					ClusterResourceName(cluster),
 					i,
-					cluster.Name,
+					ClusterResourceName(cluster),
 					cluster.Namespace,
 					GetClusterDomain(cluster),
 					getPortByName(cluster, "nn-rpc"))
 				hdfsSite[fmt.Sprintf("dfs.namenode.http-address.%s.nn%d", DefaultNameService, i)] = fmt.Sprintf(
 					"%s-namenode-%d.%s-namenode.%s.svc.%s:%d",
-					cluster.Name,
+					ClusterResourceName(cluster),
 					i,
-					cluster.Name,
+					ClusterResourceName(cluster),
 					cluster.Namespace,
 					GetClusterDomain(cluster),
 					getPortByName(cluster, "nn-http"))
@@ -158,9 +135,9 @@ func makeHdfsSite(cluster *hdfsv1.HdfsCluster, hdfsSite map[string]string, ha bo
 			quorumJournals := make([]string, 0)
 			for i := 0; i < DefaultQuorumReplicas; i++ {
 				quorumJournal := fmt.Sprintf("%s-journalnode-%d.%s-journalnode.%s.svc.%s:%d",
-					cluster.Name,
+					ClusterResourceName(cluster),
 					i,
-					cluster.Name,
+					ClusterResourceName(cluster),
 					cluster.Namespace,
 					GetClusterDomain(cluster),
 					getPortByName(cluster, "jn-rpc"))
@@ -185,9 +162,9 @@ func makeHdfsSite(cluster *hdfsv1.HdfsCluster, hdfsSite map[string]string, ha bo
 		if !nameServicesCustomed {
 			hdfsSite[fmt.Sprintf("dfs.namenode.rpc-address.%s", DefaultNameService)] = fmt.Sprintf(
 				"%s-namenode-%d.%s-namenode.%s.svc.%s:%d",
-				cluster.Name,
+				ClusterResourceName(cluster),
 				0,
-				cluster.Name,
+				ClusterResourceName(cluster),
 				cluster.Namespace,
 				GetClusterDomain(cluster),
 				getPortByName(cluster, "nn-rpc"))
@@ -260,7 +237,7 @@ func constructConfig(cluster *hdfsv1.HdfsCluster) (string, string, error) {
 	makeHdfsSite(cluster, hdfsSite, CheckHdfsHA(cluster))
 	makeCoreSite(cluster, coreSite, CheckHdfsHA(cluster))
 
-	return map2String(coreSite), map2String(hdfsSite), nil
+	return map2Xml(coreSite), map2Xml(hdfsSite), nil
 }
 
 func getImageConfig(cluster *hdfsv1.HdfsCluster) hdfsv1.ImageConfig {
@@ -306,7 +283,7 @@ func (r *HdfsClusterReconciler) constructServicePorts(cluster *hdfsv1.HdfsCluste
 func (r *HdfsClusterReconciler) constructHeadlessService(cluster *hdfsv1.HdfsCluster, role string) (*corev1.Service, error) {
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      ClusterResourceName(cluster, role, DefaultHeadlessSvcNameSuffix),
+			Name:      ClusterResourceName(cluster, fmt.Sprintf("-%s", role), DefaultHeadlessSvcNameSuffix),
 			Namespace: cluster.Namespace,
 			Labels:    ClusterResourceLabels(cluster, role),
 		},
@@ -325,7 +302,7 @@ func (r *HdfsClusterReconciler) constructHeadlessService(cluster *hdfsv1.HdfsClu
 func (r *HdfsClusterReconciler) constructService(cluster *hdfsv1.HdfsCluster, role string) (*corev1.Service, error) {
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      ClusterResourceName(cluster, role),
+			Name:      ClusterResourceName(cluster, fmt.Sprintf("-%s", role)),
 			Namespace: cluster.Namespace,
 			Labels:    ClusterResourceLabels(cluster, role),
 		},
@@ -350,7 +327,7 @@ func (r *HdfsClusterReconciler) constructConfigMap(cluster *hdfsv1.HdfsCluster) 
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ClusterResourceName(cluster, DefaultNameSuffix, DefaultConfigNameSuffix),
 			Namespace: cluster.Namespace,
-			Labels:    ClusterResourceLabels(cluster, DefaultNameSuffix),
+			Labels:    ClusterResourceLabels(cluster, HdfsRoleAll),
 		},
 		Data: map[string]string{
 			DefaultCoreSiteFile: coresite,
@@ -429,7 +406,7 @@ func (r *HdfsClusterReconciler) constructVolumeMounts(cluster *hdfsv1.HdfsCluste
 		volumeName := fmt.Sprintf("%s%d", HdfsDiskPathPrefix, i)
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
 			Name:      volumeName,
-			MountPath: fmt.Sprintf("%s%s", HdfsDataPath, volumeName),
+			MountPath: fmt.Sprintf("%s/%s", HdfsDataPath, volumeName),
 		})
 	}
 	return volumeMounts
@@ -610,7 +587,7 @@ func (r *HdfsClusterReconciler) constructWorkload(cluster *hdfsv1.HdfsCluster, r
 	}
 	stsDesired := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      ClusterResourceName(cluster, role),
+			Name:      ClusterResourceName(cluster, fmt.Sprintf("-%s", role)),
 			Namespace: cluster.Namespace,
 			Labels:    ClusterResourceLabels(cluster, role),
 		},
@@ -618,8 +595,8 @@ func (r *HdfsClusterReconciler) constructWorkload(cluster *hdfsv1.HdfsCluster, r
 			Selector: &metav1.LabelSelector{
 				MatchLabels: ClusterResourceLabels(cluster, role),
 			},
-			ServiceName: ClusterResourceName(cluster, role),
-			Replicas:    int32Ptr(getReplicas(cluster, role)),
+			ServiceName: ClusterResourceName(cluster, fmt.Sprintf("-%s", role)),
+			Replicas:    int32Ptr(GetReplicas(cluster, role)),
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: ClusterResourceLabels(cluster, role),

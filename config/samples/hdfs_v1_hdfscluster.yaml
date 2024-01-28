@@ -10,3 +10,25 @@ metadata:
   name: hdfscluster-sample
 spec:
   # TODO(user): Add fields here
+  version: "v3.3.6"
+  image:
+    repository: "nineinfra/hdfs"
+    tag: "v3.3.6"
+    pullPolicy: "IfNotPresent"
+  clusters:
+    - type: "namenode"
+      version: "v3.3.6"
+      resource:
+        replicas: 2
+    - type: "datanode"
+      version: "v3.3.6"
+      resource:
+        replicas: 3
+  clusterRefs:
+    - type: "zookeeper"
+      version: "v3.8.3"
+      conf:
+        reference-zookeeper-replicas: "3"
+        reference-zookeeper-endpoints: "100.121.195.16:2181,100.87.129.33:2181,100.68.225.196:2181"
+
+

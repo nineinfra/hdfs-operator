@@ -1,0 +1,470 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.13.0
+  name: hdfsclusters.hdfs.nineinfra.tech
+spec:
+  group: hdfs.nineinfra.tech
+  names:
+    kind: HdfsCluster
+    listKind: HdfsClusterList
+    plural: hdfsclusters
+    singular: hdfscluster
+  scope: Namespaced
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        description: HdfsCluster is the Schema for the hdfsclusters API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: HdfsClusterSpec defines the desired state of HdfsCluster
+            properties:
+              clusterRefs:
+                description: ClusterRefs. k/v configs for the cluster in k8s.such
+                  as the cluster domain
+                items:
+                  properties:
+                    conf:
+                      additionalProperties:
+                        type: string
+                      description: Conf. k/v configs for the cluster.
+                      type: object
+                    image:
+                      description: Image. image config of the cluster.
+                      properties:
+                        pullPolicy:
+                          default: Always
+                          description: 'Image pull policy. One of `Always, Never,
+                            IfNotPresent`, default: `Always`.'
+                          enum:
+                          - Always
+                          - Never
+                          - IfNotPresent
+                          type: string
+                        pullSecret:
+                          description: Secrets for image pull.
+                          type: string
+                        repository:
+                          type: string
+                        tag:
+                          description: 'Image tag. Usually the vesion of the kyuubi,
+                            default: `latest`.'
+                          type: string
+                      required:
+                      - repository
+                      type: object
+                    name:
+                      description: Name. name of the cluster.
+                      type: string
+                    resource:
+                      description: Resource. resouce config of the cluster.
+                      properties:
+                        disks:
+                          description: num of the disks. default value is 1
+                          format: int32
+                          type: integer
+                        replicas:
+                          description: The replicas of the cluster workload.Default
+                            value is 1
+                          format: int32
+                          type: integer
+                        resourceRequirements:
+                          description: The resource requirements of the cluster workload.
+                          properties:
+                            claims:
+                              description: "Claims lists the names of resources, defined
+                                in spec.resourceClaims, that are used by this container.
+                                \n This is an alpha field and requires enabling the
+                                DynamicResourceAllocation feature gate. \n This field
+                                is immutable. It can only be set for containers."
+                              items:
+                                description: ResourceClaim references one entry in
+                                  PodSpec.ResourceClaims.
+                                properties:
+                                  name:
+                                    description: Name must match the name of one entry
+                                      in pod.spec.resourceClaims of the Pod where
+                                      this field is used. It makes that resource available
+                                      inside a container.
+                                    type: string
+                                required:
+                                - name
+                                type: object
+                              type: array
+                              x-kubernetes-list-map-keys:
+                              - name
+                              x-kubernetes-list-type: map
+                            limits:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: 'Limits describes the maximum amount of
+                                compute resources allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
+                              type: object
+                            requests:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: 'Requests describes the minimum amount
+                                of compute resources required. If Requests is omitted
+                                for a container, it defaults to Limits if that is
+                                explicitly specified, otherwise to an implementation-defined
+                                value. Requests cannot exceed Limits. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
+                              type: object
+                          type: object
+                        storageClass:
+                          description: the storage class. default value is nineinfra-default
+                          type: string
+                      type: object
+                    type:
+                      enum:
+                      - namenode
+                      - datanode
+                      - journalnode
+                      - zookeeper
+                      type: string
+                    version:
+                      description: Version. version of the cluster.
+                      type: string
+                  required:
+                  - type
+                  - version
+                  type: object
+                type: array
+              clusters:
+                description: Clusters. namenode,datanode and journalnode cluster.
+                items:
+                  properties:
+                    conf:
+                      additionalProperties:
+                        type: string
+                      description: Conf. k/v configs for the cluster.
+                      type: object
+                    image:
+                      description: Image. image config of the cluster.
+                      properties:
+                        pullPolicy:
+                          default: Always
+                          description: 'Image pull policy. One of `Always, Never,
+                            IfNotPresent`, default: `Always`.'
+                          enum:
+                          - Always
+                          - Never
+                          - IfNotPresent
+                          type: string
+                        pullSecret:
+                          description: Secrets for image pull.
+                          type: string
+                        repository:
+                          type: string
+                        tag:
+                          description: 'Image tag. Usually the vesion of the kyuubi,
+                            default: `latest`.'
+                          type: string
+                      required:
+                      - repository
+                      type: object
+                    name:
+                      description: Name. name of the cluster.
+                      type: string
+                    resource:
+                      description: Resource. resouce config of the cluster.
+                      properties:
+                        disks:
+                          description: num of the disks. default value is 1
+                          format: int32
+                          type: integer
+                        replicas:
+                          description: The replicas of the cluster workload.Default
+                            value is 1
+                          format: int32
+                          type: integer
+                        resourceRequirements:
+                          description: The resource requirements of the cluster workload.
+                          properties:
+                            claims:
+                              description: "Claims lists the names of resources, defined
+                                in spec.resourceClaims, that are used by this container.
+                                \n This is an alpha field and requires enabling the
+                                DynamicResourceAllocation feature gate. \n This field
+                                is immutable. It can only be set for containers."
+                              items:
+                                description: ResourceClaim references one entry in
+                                  PodSpec.ResourceClaims.
+                                properties:
+                                  name:
+                                    description: Name must match the name of one entry
+                                      in pod.spec.resourceClaims of the Pod where
+                                      this field is used. It makes that resource available
+                                      inside a container.
+                                    type: string
+                                required:
+                                - name
+                                type: object
+                              type: array
+                              x-kubernetes-list-map-keys:
+                              - name
+                              x-kubernetes-list-type: map
+                            limits:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: 'Limits describes the maximum amount of
+                                compute resources allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
+                              type: object
+                            requests:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: 'Requests describes the minimum amount
+                                of compute resources required. If Requests is omitted
+                                for a container, it defaults to Limits if that is
+                                explicitly specified, otherwise to an implementation-defined
+                                value. Requests cannot exceed Limits. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
+                              type: object
+                          type: object
+                        storageClass:
+                          description: the storage class. default value is nineinfra-default
+                          type: string
+                      type: object
+                    type:
+                      enum:
+                      - namenode
+                      - datanode
+                      - journalnode
+                      - zookeeper
+                      type: string
+                    version:
+                      description: Version. version of the cluster.
+                      type: string
+                  required:
+                  - type
+                  - version
+                  type: object
+                type: array
+              conf:
+                additionalProperties:
+                  type: string
+                description: Conf. k/v configs for the cluster.
+                type: object
+              image:
+                description: Image. image config of the cluster.
+                properties:
+                  pullPolicy:
+                    default: Always
+                    description: 'Image pull policy. One of `Always, Never, IfNotPresent`,
+                      default: `Always`.'
+                    enum:
+                    - Always
+                    - Never
+                    - IfNotPresent
+                    type: string
+                  pullSecret:
+                    description: Secrets for image pull.
+                    type: string
+                  repository:
+                    type: string
+                  tag:
+                    description: 'Image tag. Usually the vesion of the kyuubi, default:
+                      `latest`.'
+                    type: string
+                required:
+                - repository
+                type: object
+              k8sConf:
+                additionalProperties:
+                  type: string
+                description: K8sConf. k/v configs for the cluster in k8s.such as the
+                  cluster domain
+                type: object
+              resource:
+                description: Resource. resource config of the datanodecluster if the
+                  datanode cluster not in clusters.
+                properties:
+                  disks:
+                    description: num of the disks. default value is 1
+                    format: int32
+                    type: integer
+                  replicas:
+                    description: The replicas of the cluster workload.Default value
+                      is 1
+                    format: int32
+                    type: integer
+                  resourceRequirements:
+                    description: The resource requirements of the cluster workload.
+                    properties:
+                      claims:
+                        description: "Claims lists the names of resources, defined
+                          in spec.resourceClaims, that are used by this container.
+                          \n This is an alpha field and requires enabling the DynamicResourceAllocation
+                          feature gate. \n This field is immutable. It can only be
+                          set for containers."
+                        items:
+                          description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                          properties:
+                            name:
+                              description: Name must match the name of one entry in
+                                pod.spec.resourceClaims of the Pod where this field
+                                is used. It makes that resource available inside a
+                                container.
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                      limits:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: 'Limits describes the maximum amount of compute
+                          resources allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
+                        type: object
+                      requests:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: 'Requests describes the minimum amount of compute
+                          resources required. If Requests is omitted for a container,
+                          it defaults to Limits if that is explicitly specified, otherwise
+                          to an implementation-defined value. Requests cannot exceed
+                          Limits. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
+                        type: object
+                    type: object
+                  storageClass:
+                    description: the storage class. default value is nineinfra-default
+                    type: string
+                type: object
+              version:
+                description: Version. version of the cluster.
+                type: string
+            required:
+            - image
+            - version
+            type: object
+          status:
+            description: HdfsClusterStatus defines the observed state of HdfsCluster
+            properties:
+              clustersStatus:
+                items:
+                  properties:
+                    conditions:
+                      description: Conditions list all the applied conditions
+                      items:
+                        description: ClusterCondition shows the current condition
+                          of a cluster. Comply with k8s API conventions
+                        properties:
+                          lastTransitionTime:
+                            description: Last time the condition transitioned from
+                              one status to another.
+                            type: string
+                          lastUpdateTime:
+                            description: The last time this condition was updated.
+                            type: string
+                          message:
+                            description: A human-readable message indicating details
+                              about the transition.
+                            type: string
+                          reason:
+                            description: The reason for the condition's last transition.
+                            type: string
+                          status:
+                            description: Status of the condition, one of True, False,
+                              Unknown.
+                            type: string
+                          type:
+                            description: Type of cluster condition.
+                            type: string
+                        type: object
+                      type: array
+                    currentVersion:
+                      description: CurrentVersion is the current cluster version
+                      type: string
+                    externalClientEndpoint:
+                      description: ExternalClientEndpoint is the internal client IP
+                        and port
+                      type: string
+                    internalClientEndpoint:
+                      description: InternalClientEndpoint is the internal client IP
+                        and port
+                      type: string
+                    members:
+                      description: Members is the cluster members in the cluster
+                      properties:
+                        ready:
+                          items:
+                            type: string
+                          nullable: true
+                          type: array
+                        unready:
+                          items:
+                            type: string
+                          nullable: true
+                          type: array
+                      type: object
+                    name:
+                      description: Name is the name of the cluster
+                      type: string
+                    readyReplicas:
+                      description: ReadyReplicas is the number of ready replicas in
+                        the cluster
+                      format: int32
+                      type: integer
+                    replicas:
+                      description: Replicas is the number of desired replicas in the
+                        cluster
+                      format: int32
+                      type: integer
+                    targetVersion:
+                      type: string
+                    type:
+                      description: Type is the type of the cluster
+                      type: string
+                  required:
+                  - name
+                  - type
+                  type: object
+                type: array
+            required:
+            - clustersStatus
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

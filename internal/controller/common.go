@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/xml"
+	"fmt"
 	hdfsv1 "github.com/nineinfra/hdfs-operator/api/v1"
 	githuberrors "github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
@@ -18,6 +19,29 @@ type XmlProperty struct {
 type XmlConfiguration struct {
 	XmlName    xml.Name      `xml:"configuration"`
 	Properties []XmlProperty `xml:"property"`
+}
+
+func GetReplicas(cluster *hdfsv1.HdfsCluster, role string) int32 {
+	if cluster.Spec.Clusters != nil {
+		for _, v := range cluster.Spec.Clusters {
+			if v.Type == hdfsv1.ClusterType(role) {
+				if v.Resource.Replicas != 0 {
+					return v.Resource.Replicas
+				}
+			}
+		}
+	}
+	switch role {
+	case HdfsRoleDataNode:
+		if cluster.Spec.Resource.Replicas != 0 {
+			return cluster.Spec.Resource.Replicas
+		}
+	case HdfsRoleNameNode:
+		return DefaultReplicas
+	case HdfsRoleHttpFS:
+		return DefaultReplicas
+	}
+	return DefaultQuorumReplicas
 }
 
 func ClusterResourceName(cluster *hdfsv1.HdfsCluster, suffixs ...string) string {
@@ -60,8 +84,8 @@ func CheckHdfsHA(cluster *hdfsv1.HdfsCluster) bool {
 }
 
 func GetRefZookeeperInfo(cluster *hdfsv1.HdfsCluster) (int, string, error) {
-	replicas := 0
-	endpoints := ""
+	zkReplicas := 0
+	zkEndpoints := ""
 	if cluster.Spec.ClusterRefs != nil {
 		for _, v := range cluster.Spec.ClusterRefs {
 			if v.Type == hdfsv1.ZookeeperClusterType {
@@ -74,18 +98,20 @@ func GetRefZookeeperInfo(cluster *hdfsv1.HdfsCluster) (int, string, error) {
 						if replicas < 3 || replicas%2 == 0 {
 							return 0, "", githuberrors.New("invalid zookeeper replicas for hdfs ha,should be odd num and larger than 3")
 						}
+						zkReplicas = int(replicas)
 					}
 					if endpoints, ok := v.Conf[hdfsv1.RefClusterZKEndpointsKey]; ok {
 						listValue := strings.Split(endpoints, ",")
-						if len(listValue) != replicas {
+						if len(listValue) != zkReplicas {
 							return 0, "", githuberrors.New("invalid zookeeper endpoints for hdfs ha")
 						}
+						zkEndpoints = endpoints
 					}
 				}
 			}
 		}
 	}
-	return replicas, endpoints, nil
+	return zkReplicas, zkEndpoints, nil
 }
 
 func DefaultEnvVars(role string) []corev1.EnvVar {
@@ -100,7 +126,7 @@ func DefaultEnvVars(role string) []corev1.EnvVar {
 		},
 		{
 			Name:  "HDFS_DATA_PATH",
-			Value: HdfsDataPath,
+			Value: fmt.Sprintf("%s/%s%d", HdfsDataPath, HdfsDiskPathPrefix, 0),
 		},
 		{
 			Name: "POD_IP",
