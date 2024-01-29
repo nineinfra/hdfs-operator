@@ -76,7 +76,7 @@ const (
 
 	// DefaultReadinessProbeFailureThreshold is the default probe failure threshold
 	// for the readiness probe
-	DefaultReadinessProbeFailureThreshold = 10
+	DefaultReadinessProbeFailureThreshold = 60
 
 	// DefaultReadinessProbeSuccessThreshold is the default probe success threshold
 	// for the readiness probe
@@ -96,7 +96,7 @@ const (
 
 	// DefaultLivenessProbeFailureThreshold is the default probe failure threshold
 	// for the liveness probe
-	DefaultLivenessProbeFailureThreshold = 10
+	DefaultLivenessProbeFailureThreshold = 60
 
 	// DefaultLivenessProbeSuccessThreshold is the default probe success threshold
 	// for the readiness probe
@@ -123,7 +123,11 @@ const (
 )
 
 var (
-	HDFS_HA = "false"
+	HDFS_HA        = "false"
+	JN_NODES       = ""
+	JN_RPC_PORT    = "8485"
+	ZK_NODES       = ""
+	ZK_CLIENT_PORT = "2181"
 )
 
 var HDFSRole2Prefix = map[string]string{

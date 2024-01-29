@@ -158,6 +158,7 @@ func makeHdfsSite(cluster *hdfsv1.HdfsCluster, hdfsSite map[string]string, ha bo
 		if _, ok := hdfsSite["dfs.ha.automatic-failover.enabled"]; !ok {
 			hdfsSite["dfs.ha.automatic-failover.enabled"] = "true"
 		}
+		FillJNEnvs(hdfsSite["dfs.namenode.shared.edits.dir"])
 	} else {
 		if !nameServicesCustomed {
 			hdfsSite[fmt.Sprintf("dfs.namenode.rpc-address.%s", DefaultNameService)] = fmt.Sprintf(

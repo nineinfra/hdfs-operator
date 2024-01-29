@@ -7,6 +7,7 @@ import (
 	githuberrors "github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -83,6 +84,36 @@ func CheckHdfsHA(cluster *hdfsv1.HdfsCluster) bool {
 	return false
 }
 
+func FillZKEnvs(zkEndpoints string, zkReplicas int) {
+	if zkEndpoints != "" && zkReplicas != 0 {
+		zkNodes := strings.Split(zkEndpoints, ",")
+		zkHosts := make([]string, 0)
+		for _, v := range zkNodes {
+			zkHP := strings.Split(v, ":")
+			zkHosts = append(zkHosts, zkHP[0])
+			ZK_CLIENT_PORT = zkHP[1]
+		}
+		ZK_NODES = strings.Join(zkHosts, ",")
+	}
+}
+
+func FillJNEnvs(qjournal string) {
+	if qjournal != "" {
+		re := regexp.MustCompile(`qjournal://(.+?)/`)
+		matches := re.FindStringSubmatch(qjournal)
+		if len(matches) > 1 {
+			jnNodes := strings.Split(matches[1], ";")
+			jnHosts := make([]string, 0)
+			for _, v := range jnNodes {
+				jnHP := strings.Split(v, ":")
+				jnHosts = append(jnHosts, jnHP[0])
+				JN_RPC_PORT = jnHP[1]
+			}
+			JN_NODES = strings.Join(jnHosts, ",")
+		}
+	}
+}
+
 func GetRefZookeeperInfo(cluster *hdfsv1.HdfsCluster) (int, string, error) {
 	zkReplicas := 0
 	zkEndpoints := ""
@@ -111,6 +142,7 @@ func GetRefZookeeperInfo(cluster *hdfsv1.HdfsCluster) (int, string, error) {
 			}
 		}
 	}
+	FillZKEnvs(zkEndpoints, zkReplicas)
 	return zkReplicas, zkEndpoints, nil
 }
 
@@ -123,6 +155,22 @@ func DefaultEnvVars(role string) []corev1.EnvVar {
 		{
 			Name:  "HDFS_HA",
 			Value: HDFS_HA,
+		},
+		{
+			Name:  "JN_NODES",
+			Value: JN_NODES,
+		},
+		{
+			Name:  "JN_RPC_PORT",
+			Value: JN_RPC_PORT,
+		},
+		{
+			Name:  "ZK_NODES",
+			Value: ZK_NODES,
+		},
+		{
+			Name:  "ZK_CLIENT_PORT",
+			Value: ZK_CLIENT_PORT,
 		},
 		{
 			Name:  "HDFS_DATA_PATH",

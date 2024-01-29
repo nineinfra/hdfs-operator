@@ -420,6 +420,7 @@ func (r *HdfsClusterReconciler) reconcileNamenode(ctx context.Context, cluster *
 		<-condition
 	}
 	if waitErr != nil {
+		logger.Error(waitErr, fmt.Sprintf("wait for journal node service execeed %d seconds", DefaultMaxWaitSeconds))
 		return waitErr
 	}
 	return r.reconcileHdfsRole(ctx, cluster, desiredSts, HdfsRoleNameNode, logger)
