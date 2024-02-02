@@ -101,13 +101,14 @@ func TestDefaultXml2Map(t *testing.T) {
 		name    string
 		want    map[string]string
 		want1   map[string]string
+		want2   map[string]string
 		wantErr bool
 	}{
 		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, got1, err := DefaultXml2Map()
+			got, got1, got2, err := DefaultXml2Map()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DefaultXml2Map() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -117,6 +118,10 @@ func TestDefaultXml2Map(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got1, tt.want1) {
 				t.Errorf("DefaultXml2Map() got1 = %v, want %v", got1, tt.want1)
+			}
+
+			if !reflect.DeepEqual(got2, tt.want2) {
+				t.Errorf("DefaultXml2Map() got2 = %v, want %v", got2, tt.want2)
 			}
 		})
 	}
@@ -701,7 +706,7 @@ func TestHdfsClusterReconciler_constructVolumes(t *testing.T) {
 	}
 }
 
-func TestHdfsClusterReconciler_constructWorkload(t *testing.T) {
+func TestHdfsClusterReconciler_constructStatefulSet(t *testing.T) {
 	type fields struct {
 		Client client.Client
 		Scheme *runtime.Scheme
@@ -725,13 +730,13 @@ func TestHdfsClusterReconciler_constructWorkload(t *testing.T) {
 				Client: tt.fields.Client,
 				Scheme: tt.fields.Scheme,
 			}
-			got, err := r.constructWorkload(tt.args.cluster, tt.args.role)
+			got, err := r.constructStatefulSet(tt.args.cluster, tt.args.role)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("constructWorkload() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("constructStatefulSet() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("constructWorkload() got = %v, want %v", got, tt.want)
+				t.Errorf("constructStatefulSet() got = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -1120,37 +1125,6 @@ func TestHdfsClusterReconciler_reconcileHttpFS(t *testing.T) {
 	}
 }
 
-func TestHdfsClusterReconciler_reconcileHttpFSHeadlessService(t *testing.T) {
-	type fields struct {
-		Client client.Client
-		Scheme *runtime.Scheme
-	}
-	type args struct {
-		ctx     context.Context
-		cluster *hdfsv1.HdfsCluster
-		logger  logr.Logger
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := &HdfsClusterReconciler{
-				Client: tt.fields.Client,
-				Scheme: tt.fields.Scheme,
-			}
-			if err := r.reconcileHttpFSHeadlessService(tt.args.ctx, tt.args.cluster, tt.args.logger); (err != nil) != tt.wantErr {
-				t.Errorf("reconcileHttpFSHeadlessService() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
 func TestHdfsClusterReconciler_reconcileHttpFSService(t *testing.T) {
 	type fields struct {
 		Client client.Client
@@ -1484,13 +1458,14 @@ func Test_constructConfig(t *testing.T) {
 		args    args
 		want    string
 		want1   string
+		want2   string
 		wantErr bool
 	}{
 		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, got1, err := constructConfig(tt.args.cluster)
+			got, got1, got2, err := constructConfig(tt.args.cluster)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("constructConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -1501,17 +1476,22 @@ func Test_constructConfig(t *testing.T) {
 			if got1 != tt.want1 {
 				t.Errorf("constructConfig() got1 = %v, want %v", got1, tt.want1)
 			}
+			if got2 != tt.want2 {
+				t.Errorf("constructConfig() got2 = %v, want %v", got2, tt.want2)
+			}
 		})
 	}
 }
 
 func Test_getConfigValue(t *testing.T) {
 	type args struct {
-		conf                map[string]string
-		coreSiteDefaultConf map[string]string
-		hdfsSiteDefaultConf map[string]string
-		coreSite            map[string]string
-		hdfsSite            map[string]string
+		conf                  map[string]string
+		coreSiteDefaultConf   map[string]string
+		hdfsSiteDefaultConf   map[string]string
+		httpfsSiteDefaultConf map[string]string
+		coreSite              map[string]string
+		hdfsSite              map[string]string
+		httpfsSite            map[string]string
 	}
 	tests := []struct {
 		name string
@@ -1521,7 +1501,7 @@ func Test_getConfigValue(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			getConfigValue(tt.args.conf, tt.args.coreSiteDefaultConf, tt.args.hdfsSiteDefaultConf, tt.args.coreSite, tt.args.hdfsSite)
+			getConfigValue(tt.args.conf, tt.args.coreSiteDefaultConf, tt.args.hdfsSiteDefaultConf, tt.args.httpfsSiteDefaultConf, tt.args.coreSite, tt.args.hdfsSite, tt.args.httpfsSite)
 		})
 	}
 }

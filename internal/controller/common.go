@@ -219,17 +219,17 @@ func DefaultEnvVars(role string) []corev1.EnvVar {
 	}
 }
 
-func DefaultXml2Map() (map[string]string, map[string]string, error) {
+func DefaultXml2Map() (map[string]string, map[string]string, map[string]string, error) {
 	// 解析XML文件
 	xmlFile, err := os.ReadFile(CoreSiteDefaultConfFile)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	var conf XmlConfiguration
 	err = xml.Unmarshal(xmlFile, &conf)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// 转换为map[string]string
@@ -240,12 +240,12 @@ func DefaultXml2Map() (map[string]string, map[string]string, error) {
 	// 解析XML文件
 	xmlFile, err = os.ReadFile(HdfsSiteDefaultConfFile)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	err = xml.Unmarshal(xmlFile, &conf)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// 转换为map[string]string
@@ -253,5 +253,22 @@ func DefaultXml2Map() (map[string]string, map[string]string, error) {
 	for _, prop := range conf.Properties {
 		coreSite[prop.Name] = prop.Value
 	}
-	return coreSite, hdfsSite, nil
+
+	// 解析XML文件
+	xmlFile, err = os.ReadFile(HttpFSSiteDefaultConfFile)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	err = xml.Unmarshal(xmlFile, &conf)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	// 转换为map[string]string
+	httpfsSite := make(map[string]string)
+	for _, prop := range conf.Properties {
+		coreSite[prop.Name] = prop.Value
+	}
+	return coreSite, hdfsSite, httpfsSite, nil
 }

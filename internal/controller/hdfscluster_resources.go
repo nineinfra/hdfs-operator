@@ -41,32 +41,27 @@ func getDiskNum(cluster *hdfsv1.HdfsCluster, role string) int32 {
 		}
 	}
 
+	//httpfs do not need a pvc by default
+	if role == HdfsRoleHttpFS {
+		return 0
+	}
+
 	return DefaultDiskNum
 }
 
-func getPortByName(cluster *hdfsv1.HdfsCluster, name string) int32 {
-	var namedPort int32
-	for k, v := range DefaultNamedPort {
-		if strings.EqualFold(name, k) {
-			namedPort = v
-			if cluster.Spec.Conf != nil {
-				if value, ok := cluster.Spec.Conf[DefaultNamedPortConfKey[name]]; ok {
-					u, err := url.Parse("//" + value)
-					if err == nil {
-						tmpPort, _ := strconv.Atoi(u.Port())
-						namedPort = int32(tmpPort)
-					}
-				}
-			}
-		}
+func makeHttpFSSite(cluster *hdfsv1.HdfsCluster, httpfsSite map[string]string, ha bool) {
+	if _, ok := httpfsSite["httpfs.http.port"]; !ok {
+		httpfsSite["httpfs.http.port"] = fmt.Sprintf("%d", getPortByName(cluster, "hf-http"))
 	}
-	return namedPort
-}
 
-func getHttpPortByRole(cluster *hdfsv1.HdfsCluster, role string) int32 {
-	rolePrefix := HDFSRole2Prefix[role]
-	name := fmt.Sprintf("%s%s", rolePrefix, "-http")
-	return getPortByName(cluster, name)
+	if _, ok := httpfsSite["httpfs.buffer.size"]; !ok {
+		httpfsSite["httpfs.buffer.size"] = DefaultIOBufferSize
+	}
+
+	if _, ok := httpfsSite["hadoop.http.temp.dir"]; !ok {
+		httpfsSite["hadoop.http.temp.dir"] = HttpFSTempDir
+	}
+
 }
 
 func makeCoreSite(cluster *hdfsv1.HdfsCluster, coreSite map[string]string, ha bool) {
@@ -91,6 +86,10 @@ func makeCoreSite(cluster *hdfsv1.HdfsCluster, coreSite map[string]string, ha bo
 		coreSite["hadoop.tmp.dir"] = fmt.Sprintf("%s/%s/tmp",
 			HdfsDataPath,
 			fmt.Sprintf("%s%d", HdfsDiskPathPrefix, 0))
+	}
+
+	if _, ok := coreSite["io.file.buffer.size"]; !ok {
+		coreSite["io.file.buffer.size"] = DefaultIOBufferSize
 	}
 
 	if _, ok := coreSite["hadoop.http.staticuser.user"]; !ok {
@@ -191,14 +190,16 @@ func makeHdfsSite(cluster *hdfsv1.HdfsCluster, hdfsSite map[string]string, ha bo
 	hdfsSite["dfs.datanode.data.dir"] = strings.Join(volumeNames, ",")
 }
 
-func getConfigValue(conf, coreSiteDefaultConf, hdfsSiteDefaultConf, coreSite, hdfsSite map[string]string) {
+func getConfigValue(conf, coreSiteDefaultConf, hdfsSiteDefaultConf, httpfsSiteDefaultConf, coreSite, hdfsSite, httpfsSite map[string]string) {
 	for k, v := range conf {
 		if _, ok := coreSiteDefaultConf[k]; ok {
 			coreSite[k] = v
 		} else if _, ok = hdfsSiteDefaultConf[k]; ok {
 			hdfsSite[k] = v
+		} else if _, ok = httpfsSiteDefaultConf[k]; ok {
+			httpfsSite[k] = v
 		} else {
-			//special k/v config,such as dfs.ha.namenodes.xxx,dfs.namenode.rpc-address.xxx.xxx
+			//special k/v config, the key is not fixed,such as dfs.ha.namenodes.xxx,dfs.namenode.rpc-address.xxx.xxx
 			//dfs.client.failover.proxy.provider.xxx,hadoop.security.crypto.codec.classes.xxx
 			for _, prefix := range CustomizableHdfsSiteConfKeyPrefixs {
 				if strings.Contains(k, prefix) {
@@ -214,31 +215,33 @@ func getConfigValue(conf, coreSiteDefaultConf, hdfsSiteDefaultConf, coreSite, hd
 	}
 }
 
-func constructConfig(cluster *hdfsv1.HdfsCluster) (string, string, error) {
+func constructConfig(cluster *hdfsv1.HdfsCluster) (string, string, string, error) {
 	coreSite := make(map[string]string)
 	hdfsSite := make(map[string]string)
+	httpfsSite := make(map[string]string)
 	// add custom conf to core site or hdfs site
-	coreSiteDefaultConf, hdfsSiteDefaultConf, err := DefaultXml2Map()
+	coreSiteDefaultConf, hdfsSiteDefaultConf, httpfsSiteDefaultConf, err := DefaultXml2Map()
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 
 	if cluster.Spec.Conf != nil {
-		getConfigValue(cluster.Spec.Conf, coreSiteDefaultConf, hdfsSiteDefaultConf, coreSite, hdfsSite)
+		getConfigValue(cluster.Spec.Conf, coreSiteDefaultConf, hdfsSiteDefaultConf, httpfsSiteDefaultConf, coreSite, hdfsSite, httpfsSite)
 	}
 
 	if cluster.Spec.Clusters != nil {
 		for _, c := range cluster.Spec.Clusters {
 			if c.Conf != nil {
-				getConfigValue(c.Conf, coreSiteDefaultConf, hdfsSiteDefaultConf, coreSite, hdfsSite)
+				getConfigValue(c.Conf, coreSiteDefaultConf, hdfsSiteDefaultConf, httpfsSiteDefaultConf, coreSite, hdfsSite, httpfsSite)
 			}
 		}
 	}
 
 	makeHdfsSite(cluster, hdfsSite, CheckHdfsHA(cluster))
 	makeCoreSite(cluster, coreSite, CheckHdfsHA(cluster))
+	makeHttpFSSite(cluster, httpfsSite, CheckHdfsHA(cluster))
 
-	return map2Xml(coreSite), map2Xml(hdfsSite), nil
+	return map2Xml(coreSite), map2Xml(hdfsSite), map2Xml(httpfsSite), nil
 }
 
 func getImageConfig(cluster *hdfsv1.HdfsCluster) hdfsv1.ImageConfig {
@@ -257,20 +260,58 @@ func getImageConfig(cluster *hdfsv1.HdfsCluster) hdfsv1.ImageConfig {
 	return ic
 }
 
+func getPortByName(cluster *hdfsv1.HdfsCluster, name string) int32 {
+	var namedPort int32
+	for k, v := range DefaultNamedPort {
+		if strings.EqualFold(name, k) {
+			namedPort = parsePortFromConf(cluster, name)
+			if namedPort == 0 {
+				namedPort = v
+			}
+		}
+	}
+	return namedPort
+}
+
+func getHttpPortByRole(cluster *hdfsv1.HdfsCluster, role string) int32 {
+	rolePrefix := HDFSRole2Prefix[role]
+	name := fmt.Sprintf("%s%s", rolePrefix, "-http")
+	return getPortByName(cluster, name)
+}
+
+func getRpcPortByRole(cluster *hdfsv1.HdfsCluster, role string) int32 {
+	rolePrefix := HDFSRole2Prefix[role]
+	name := fmt.Sprintf("%s%s", rolePrefix, "-rpc")
+	return getPortByName(cluster, name)
+}
+
+func parsePortFromConf(cluster *hdfsv1.HdfsCluster, name string) int32 {
+	var namedPort int32
+	if cluster.Spec.Conf != nil {
+		if value, ok := cluster.Spec.Conf[DefaultNamedPortConfKey[name]]; ok {
+			u, err := url.Parse("//" + value)
+			if err == nil {
+				tmpPort, _ := strconv.Atoi(u.Port())
+				namedPort = int32(tmpPort)
+			} else {
+				tmpPort, err := strconv.Atoi(value)
+				if err != nil {
+					namedPort = int32(tmpPort)
+				}
+			}
+		}
+	}
+	return namedPort
+}
+
 func (r *HdfsClusterReconciler) constructServicePorts(cluster *hdfsv1.HdfsCluster, role string) []corev1.ServicePort {
 	servicePorts := make([]corev1.ServicePort, 0)
 	rolePrefix := HDFSRole2Prefix[role]
 	for name, port := range DefaultNamedPort {
 		if strings.HasPrefix(name, rolePrefix) {
-			namedPort := port
-			if cluster.Spec.Conf != nil {
-				if value, ok := cluster.Spec.Conf[DefaultNamedPortConfKey[name]]; ok {
-					u, err := url.Parse("//" + value)
-					if err == nil {
-						tmpPort, _ := strconv.Atoi(u.Port())
-						namedPort = int32(tmpPort)
-					}
-				}
+			namedPort := parsePortFromConf(cluster, name)
+			if namedPort == 0 {
+				namedPort = port
 			}
 			servicePorts = append(servicePorts, corev1.ServicePort{
 				Name: name,
@@ -320,7 +361,7 @@ func (r *HdfsClusterReconciler) constructService(cluster *hdfsv1.HdfsCluster, ro
 }
 
 func (r *HdfsClusterReconciler) constructConfigMap(cluster *hdfsv1.HdfsCluster) (*corev1.ConfigMap, error) {
-	coresite, hdfssite, err := constructConfig(cluster)
+	coresite, hdfssite, httpfssite, err := constructConfig(cluster)
 	if err != nil {
 		return nil, err
 	}
@@ -331,8 +372,9 @@ func (r *HdfsClusterReconciler) constructConfigMap(cluster *hdfsv1.HdfsCluster) 
 			Labels:    ClusterResourceLabels(cluster, HdfsRoleAll),
 		},
 		Data: map[string]string{
-			DefaultCoreSiteFile: coresite,
-			DefaultHdfsSiteFile: hdfssite,
+			DefaultCoreSiteFile:   coresite,
+			DefaultHdfsSiteFile:   hdfssite,
+			DefaultHttpFSSiteFile: httpfssite,
 		},
 	}
 	if err := ctrl.SetControllerReference(cluster, cm, r.Scheme); err != nil {
@@ -366,15 +408,9 @@ func (r *HdfsClusterReconciler) constructContainerPorts(cluster *hdfsv1.HdfsClus
 	rolePrefix := HDFSRole2Prefix[role]
 	for name, port := range DefaultNamedPort {
 		if strings.HasPrefix(name, rolePrefix) {
-			namedPort := port
-			if cluster.Spec.Conf != nil {
-				if value, ok := cluster.Spec.Conf[DefaultNamedPortConfKey[name]]; ok {
-					u, err := url.Parse("//" + value)
-					if err == nil {
-						tmpPort, _ := strconv.Atoi(u.Port())
-						namedPort = int32(tmpPort)
-					}
-				}
+			namedPort := parsePortFromConf(cluster, name)
+			if namedPort == 0 {
+				namedPort = port
 			}
 			containerPorts = append(containerPorts, corev1.ContainerPort{
 				Name:          name,
@@ -399,9 +435,16 @@ func (r *HdfsClusterReconciler) constructVolumeMounts(cluster *hdfsv1.HdfsCluste
 			SubPath:   DefaultHdfsSiteFile,
 		},
 		{
+			Name:      ClusterResourceName(cluster, DefaultNameSuffix, DefaultConfigNameSuffix),
+			MountPath: fmt.Sprintf("%s/%s", HdfsConfDir, DefaultHttpFSSiteFile),
+			SubPath:   DefaultHttpFSSiteFile,
+		},
+	}
+	if role != HdfsRoleHttpFS {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
 			Name:      DefaultLogVolumeName,
 			MountPath: HdfsLogsDir,
-		},
+		})
 	}
 	for i := 0; i < num; i++ {
 		volumeName := fmt.Sprintf("%s%d", HdfsDiskPathPrefix, i)
@@ -432,11 +475,18 @@ func (r *HdfsClusterReconciler) constructVolumes(cluster *hdfsv1.HdfsCluster, ro
 							Key:  DefaultHdfsSiteFile,
 							Path: DefaultHdfsSiteFile,
 						},
+						{
+							Key:  DefaultHttpFSSiteFile,
+							Path: DefaultHttpFSSiteFile,
+						},
 					},
 				},
 			},
 		},
-		{
+	}
+
+	if role != HdfsRoleHttpFS {
+		volumes = append(volumes, corev1.Volume{
 			Name: DefaultLogVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
@@ -444,8 +494,9 @@ func (r *HdfsClusterReconciler) constructVolumes(cluster *hdfsv1.HdfsCluster, ro
 					ReadOnly:  false,
 				},
 			},
-		},
+		})
 	}
+
 	for i := 0; i < num; i++ {
 		volumes = append(volumes, corev1.Volume{
 			Name: fmt.Sprintf("%s%d", HdfsDiskPathPrefix, i),
@@ -460,13 +511,36 @@ func (r *HdfsClusterReconciler) constructVolumes(cluster *hdfsv1.HdfsCluster, ro
 	return volumes
 }
 
-func (r *HdfsClusterReconciler) constructReadinessProbe(cluster *hdfsv1.HdfsCluster, role string) *corev1.Probe {
-	return &corev1.Probe{
-		ProbeHandler: corev1.ProbeHandler{
-			HTTPGet: &corev1.HTTPGetAction{
+func (r *HdfsClusterReconciler) getProbeHandler(cluster *hdfsv1.HdfsCluster, role string, pType string) corev1.ProbeHandler {
+	ph := corev1.ProbeHandler{}
+	if role == HdfsRoleHttpFS {
+		ph = corev1.ProbeHandler{
+			TCPSocket: &corev1.TCPSocketAction{
 				Port: intstr.FromInt32(getHttpPortByRole(cluster, role)),
 			},
-		},
+		}
+	} else {
+		if pType == HdfsProbeTypeReadiness {
+			ph = corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Port: intstr.FromInt32(getHttpPortByRole(cluster, role)),
+				},
+			}
+		} else {
+			ph = corev1.ProbeHandler{
+				TCPSocket: &corev1.TCPSocketAction{
+					Port: intstr.FromInt32(getRpcPortByRole(cluster, role)),
+				},
+			}
+		}
+
+	}
+	return ph
+}
+
+func (r *HdfsClusterReconciler) constructReadinessProbe(cluster *hdfsv1.HdfsCluster, role string) *corev1.Probe {
+	return &corev1.Probe{
+		ProbeHandler:        r.getProbeHandler(cluster, role, HdfsProbeTypeReadiness),
 		InitialDelaySeconds: DefaultReadinessProbeInitialDelaySeconds,
 		PeriodSeconds:       DefaultReadinessProbePeriodSeconds,
 		TimeoutSeconds:      DefaultReadinessProbeTimeoutSeconds,
@@ -477,11 +551,7 @@ func (r *HdfsClusterReconciler) constructReadinessProbe(cluster *hdfsv1.HdfsClus
 
 func (r *HdfsClusterReconciler) constructLivenessProbe(cluster *hdfsv1.HdfsCluster, role string) *corev1.Probe {
 	return &corev1.Probe{
-		ProbeHandler: corev1.ProbeHandler{
-			HTTPGet: &corev1.HTTPGetAction{
-				Port: intstr.FromInt32(getHttpPortByRole(cluster, role)),
-			},
-		},
+		ProbeHandler:        r.getProbeHandler(cluster, role, HdfsProbeTypeLiveness),
 		InitialDelaySeconds: DefaultLivenessProbeInitialDelaySeconds,
 		PeriodSeconds:       DefaultLivenessProbePeriodSeconds,
 		TimeoutSeconds:      DefaultLivenessProbeTimeoutSeconds,
@@ -581,7 +651,7 @@ func (r *HdfsClusterReconciler) constructPVCs(cluster *hdfsv1.HdfsCluster, role 
 	return pvcs, nil
 }
 
-func (r *HdfsClusterReconciler) constructWorkload(cluster *hdfsv1.HdfsCluster, role string) (*appsv1.StatefulSet, error) {
+func (r *HdfsClusterReconciler) constructStatefulSet(cluster *hdfsv1.HdfsCluster, role string) (*appsv1.StatefulSet, error) {
 	pvcs, err := r.constructPVCs(cluster, role)
 	if err != nil {
 		return nil, nil
@@ -612,4 +682,31 @@ func (r *HdfsClusterReconciler) constructWorkload(cluster *hdfsv1.HdfsCluster, r
 		return stsDesired, err
 	}
 	return stsDesired, nil
+}
+
+func (r *HdfsClusterReconciler) constructDeployment(cluster *hdfsv1.HdfsCluster, role string) (*appsv1.Deployment, error) {
+	deployDesired := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      ClusterResourceName(cluster, fmt.Sprintf("-%s", role)),
+			Namespace: cluster.Namespace,
+			Labels:    ClusterResourceLabels(cluster, role),
+		},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: ClusterResourceLabels(cluster, role),
+			},
+			Replicas: int32Ptr(GetReplicas(cluster, role)),
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: ClusterResourceLabels(cluster, role),
+				},
+				Spec: r.constructPodSpec(cluster, role),
+			},
+		},
+	}
+
+	if err := ctrl.SetControllerReference(cluster, deployDesired, r.Scheme); err != nil {
+		return deployDesired, err
+	}
+	return deployDesired, nil
 }

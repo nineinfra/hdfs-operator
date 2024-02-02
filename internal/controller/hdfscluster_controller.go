@@ -220,21 +220,11 @@ func (r *HdfsClusterReconciler) reconcileJournalnodeHeadlessService(ctx context.
 	return r.reconcileHdfsHeadlessService(ctx, cluster, desiredSvc, HdfsRoleJournalNode, logger)
 }
 
-func (r *HdfsClusterReconciler) reconcileHttpFSHeadlessService(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
-	desiredSvc, err := r.constructHeadlessService(cluster, HdfsRoleHttpFS)
-	if err != nil {
-		return err
-	}
-
-	return r.reconcileHdfsHeadlessService(ctx, cluster, desiredSvc, HdfsRoleHttpFS, logger)
-}
-
 func (r *HdfsClusterReconciler) reconcileHeadlessService(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
 	for _, fun := range []reconcileFun{
 		r.reconcileNamenodeHeadlessService,
 		r.reconcileDatanodeHeadlessService,
 		r.reconcileJournalnodeHeadlessService,
-		//r.reconcileHttpFSHeadlessService,
 	} {
 		if err := fun(ctx, cluster, logger); err != nil {
 			return err
@@ -351,7 +341,7 @@ func (r *HdfsClusterReconciler) reconcileHdfsRole(ctx context.Context, cluster *
 	existsSts := &appsv1.StatefulSet{}
 	err = r.Client.Get(context.TODO(), types.NamespacedName{Name: desiredSts.Name, Namespace: desiredSts.Namespace}, existsSts)
 	if err != nil && errors.IsNotFound(err) {
-		logger.Info(fmt.Sprintf("Creating a new %s StatefulSet", role))
+		logger.Info(fmt.Sprintf("Creating a new %s Statefulset", role))
 		err = r.Client.Create(context.TODO(), desiredSts)
 		if err != nil {
 			return err
@@ -364,8 +354,25 @@ func (r *HdfsClusterReconciler) reconcileHdfsRole(ctx context.Context, cluster *
 	return nil
 }
 
+func (r *HdfsClusterReconciler) reconcileHdfsDeployRole(ctx context.Context, cluster *hdfsv1.HdfsCluster, desiredDeploy *appsv1.Deployment, role string, logger logr.Logger) (err error) {
+	existsDeploy := &appsv1.Deployment{}
+	err = r.Client.Get(context.TODO(), types.NamespacedName{Name: desiredDeploy.Name, Namespace: desiredDeploy.Namespace}, existsDeploy)
+	if err != nil && errors.IsNotFound(err) {
+		logger.Info(fmt.Sprintf("Creating a new %s Deployment", role))
+		err = r.Client.Create(context.TODO(), desiredDeploy)
+		if err != nil {
+			return err
+		}
+		return nil
+	} else if err != nil {
+		return err
+	}
+	logger.Info(fmt.Sprintf("Creating a new %s successfully", role))
+	return nil
+}
+
 func (r *HdfsClusterReconciler) reconcileNamenode(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
-	desiredSts, err := r.constructWorkload(cluster, HdfsRoleNameNode)
+	desiredSts, err := r.constructStatefulSet(cluster, HdfsRoleNameNode)
 	if err != nil {
 		return err
 	}
@@ -427,7 +434,7 @@ func (r *HdfsClusterReconciler) reconcileNamenode(ctx context.Context, cluster *
 }
 
 func (r *HdfsClusterReconciler) reconcileDatanode(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
-	desiredSts, err := r.constructWorkload(cluster, HdfsRoleDataNode)
+	desiredSts, err := r.constructStatefulSet(cluster, HdfsRoleDataNode)
 	if err != nil {
 		return err
 	}
@@ -436,7 +443,7 @@ func (r *HdfsClusterReconciler) reconcileDatanode(ctx context.Context, cluster *
 
 func (r *HdfsClusterReconciler) reconcileJournalnode(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
 	if CheckHdfsHA(cluster) {
-		desiredSts, err := r.constructWorkload(cluster, HdfsRoleJournalNode)
+		desiredSts, err := r.constructStatefulSet(cluster, HdfsRoleJournalNode)
 		if err != nil {
 			return err
 		}
@@ -446,11 +453,11 @@ func (r *HdfsClusterReconciler) reconcileJournalnode(ctx context.Context, cluste
 }
 
 func (r *HdfsClusterReconciler) reconcileHttpFS(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
-	desiredSts, err := r.constructWorkload(cluster, HdfsRoleHttpFS)
+	desiredDeploy, err := r.constructDeployment(cluster, HdfsRoleHttpFS)
 	if err != nil {
 		return err
 	}
-	return r.reconcileHdfsRole(ctx, cluster, desiredSts, HdfsRoleHttpFS, logger)
+	return r.reconcileHdfsDeployRole(ctx, cluster, desiredDeploy, HdfsRoleHttpFS, logger)
 }
 
 func (r *HdfsClusterReconciler) reconcileWorkload(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {

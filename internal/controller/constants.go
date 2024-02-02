@@ -56,6 +56,9 @@ const (
 	// DefaultHdfsSiteFile is the default hdfs site file name
 	DefaultHdfsSiteFile = "hdfs-site.xml"
 
+	// DefaultHttpFSSiteFile is the default httpfs site file name
+	DefaultHttpFSSiteFile = "httpfs-site.xml"
+
 	// DefaultTerminationGracePeriod is the default time given before the
 	// container is stopped. This gives clients time to disconnect from a
 	// specific node gracefully.
@@ -63,8 +66,15 @@ const (
 
 	// DefaultHdfsVolumeSize is the default volume size for the
 	// Hdfs data volume
-	DefaultHdfsVolumeSize    = "100Gi"
+	DefaultHdfsVolumeSize = "100Gi"
+
+	// DefaultHdfsLogVolumeSize is the default volume size for the
+	// Hdfs log volume
 	DefaultHdfsLogVolumeSize = "5Gi"
+
+	// DefaultIOBufferSize is the default size for the
+	// io file buffer
+	DefaultIOBufferSize = "131072"
 
 	// DefaultReadinessProbeInitialDelaySeconds is the default initial delay (in seconds)
 	// for the readiness probe
@@ -105,21 +115,30 @@ const (
 	// DefaultLivenessProbeTimeoutSeconds is the default probe timeout (in seconds)
 	// for the liveness probe
 	DefaultLivenessProbeTimeoutSeconds = 10
+
+	//HdfsProbeTypeLiveness liveness type probe
+	HdfsProbeTypeLiveness = "liveness"
+
+	//HdfsProbeTypeReadiness readiness type probe
+	HdfsProbeTypeReadiness = "readiness"
 )
 
 const (
-	HdfsRoleNameNode        = "namenode"
-	HdfsRoleDataNode        = "datanode"
-	HdfsRoleJournalNode     = "journalnode"
-	HdfsRoleHttpFS          = "httpfs"
-	HdfsRoleAll             = "hdfs"
-	HdfsHomeDir             = "/opt/hadoop"
-	HdfsConfDir             = HdfsHomeDir + "/conf"
-	HdfsDataPath            = HdfsHomeDir + "/data"
-	HdfsLogsDir             = HdfsHomeDir + "/logs"
-	HdfsDiskPathPrefix      = "disk"
-	CoreSiteDefaultConfFile = "/hdfs/" + CurrentHdfsVersion + "/" + "core-site.xml.default"
-	HdfsSiteDefaultConfFile = "/hdfs/" + CurrentHdfsVersion + "/" + "hdfs-site.xml.default"
+	HdfsRoleNameNode    = "namenode"
+	HdfsRoleDataNode    = "datanode"
+	HdfsRoleJournalNode = "journalnode"
+	HdfsRoleHttpFS      = "httpfs"
+	HdfsRoleAll         = "hdfs"
+	HdfsHomeDir         = "/opt/hadoop"
+	//HdfsConfDir               = HdfsHomeDir + "/conf"
+	HdfsConfDir               = HdfsHomeDir + "/etc/hadoop"
+	HdfsDataPath              = HdfsHomeDir + "/data"
+	HdfsLogsDir               = HdfsHomeDir + "/logs"
+	HttpFSTempDir             = HdfsHomeDir + "/temp"
+	HdfsDiskPathPrefix        = "disk"
+	CoreSiteDefaultConfFile   = "/hdfs/" + CurrentHdfsVersion + "/" + "core-site.xml.default"
+	HdfsSiteDefaultConfFile   = "/hdfs/" + CurrentHdfsVersion + "/" + "hdfs-site.xml.default"
+	HttpFSSiteDefaultConfFile = "/hdfs/" + CurrentHdfsVersion + "/" + "httpfs-site.xml.default"
 )
 
 var (
@@ -134,6 +153,7 @@ var HDFSRole2Prefix = map[string]string{
 	"namenode":    "nn",
 	"datanode":    "dn",
 	"journalnode": "jn",
+	"httpfs":      "hf",
 }
 
 var DefaultNamedPortConfKey = map[string]string{
@@ -148,9 +168,10 @@ var DefaultNamedPortConfKey = map[string]string{
 	//"nn2-http":       "dfs.namenode.secondary.http-address",
 	//"nn2-https":      "dfs.namenode.secondary.https-address",
 	"dn-http":  "dfs.datanode.http.address",
-	"dn-ipc":   "dfs.datanode.ipc.address",
+	"dn-rpc":   "dfs.datanode.ipc.address",
 	"dn-addr":  "dfs.datanode.address",
 	"dn-https": "dfs.datanode.https.address",
+	"hf-http":  "httpfs.http.port",
 }
 
 var DefaultNamedPort = map[string]int32{
@@ -165,9 +186,10 @@ var DefaultNamedPort = map[string]int32{
 	//"nn2-http":       9868,
 	//"nn2-https":      9869,
 	"dn-http":  9864,
-	"dn-ipc":   9867,
+	"dn-rpc":   9867,
 	"dn-addr":  9866,
 	"dn-https": 9865,
+	"hf-http":  14000,
 }
 
 var CustomizableHdfsSiteConfKeyPrefixs = []string{
