@@ -67,6 +67,7 @@ func makeHttpFSSite(cluster *hdfsv1.HdfsCluster, httpfsSite map[string]string, h
 func makeCoreSite(cluster *hdfsv1.HdfsCluster, coreSite map[string]string, ha bool) {
 	if ha {
 		_, endpoints, _ := GetRefZookeeperInfo(cluster)
+		coreSite["ha.zookeeper.parent-znode"] = fmt.Sprintf("%s%s", DefaultHdfsParentZnodePrefix, ClusterResourceName(cluster))
 		coreSite["ha.zookeeper.quorum"] = endpoints
 		if _, ok := coreSite["fs.defaultFS"]; !ok {
 			coreSite["fs.defaultFS"] = fmt.Sprintf("hdfs://%s", DefaultNameService)
@@ -158,6 +159,7 @@ func makeHdfsSite(cluster *hdfsv1.HdfsCluster, hdfsSite map[string]string, ha bo
 			hdfsSite["dfs.ha.automatic-failover.enabled"] = "true"
 		}
 		FillJNEnvs(hdfsSite["dfs.namenode.shared.edits.dir"])
+		FillNNEnvs(hdfsSite)
 	} else {
 		if !nameServicesCustomed {
 			hdfsSite[fmt.Sprintf("dfs.namenode.rpc-address.%s", DefaultNameService)] = fmt.Sprintf(

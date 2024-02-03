@@ -114,6 +114,23 @@ func FillJNEnvs(qjournal string) {
 	}
 }
 
+func FillNNEnvs(hdfsSite map[string]string) {
+	if hdfsSite != nil {
+		ns := hdfsSite["dfs.nameservices"]
+		nns := hdfsSite[fmt.Sprintf("dfs.ha.namenodes.%s", ns)]
+		nnlist := strings.Split(nns, ",")
+		nn0 := hdfsSite[fmt.Sprintf("dfs.namenode.rpc-address.%s.%s", ns, nnlist[0])]
+		nn1 := hdfsSite[fmt.Sprintf("dfs.namenode.rpc-address.%s.%s", ns, nnlist[1])]
+		nn0NodeAndPort := strings.Split(nn0, ":")
+		nn1NodeAndPort := strings.Split(nn1, ":")
+		if len(nn0NodeAndPort) == 2 && len(nn1NodeAndPort) == 2 {
+			NN0_NODE = nn0NodeAndPort[0]
+			NN1_NODE = nn1NodeAndPort[0]
+			NN_RPC_PORT = nn0NodeAndPort[1]
+		}
+	}
+}
+
 func GetRefZookeeperInfo(cluster *hdfsv1.HdfsCluster) (int, string, error) {
 	zkReplicas := 0
 	zkEndpoints := ""
@@ -163,6 +180,18 @@ func DefaultEnvVars(role string) []corev1.EnvVar {
 		{
 			Name:  "JN_RPC_PORT",
 			Value: JN_RPC_PORT,
+		},
+		{
+			Name:  "NN0_NODE",
+			Value: NN0_NODE,
+		},
+		{
+			Name:  "NN1_NODE",
+			Value: NN1_NODE,
+		},
+		{
+			Name:  "NN_RPC_PORT",
+			Value: NN_RPC_PORT,
 		},
 		{
 			Name:  "ZK_NODES",
