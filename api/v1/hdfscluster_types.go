@@ -108,6 +108,7 @@ type HdfsClusterSpec struct {
 	Clusters []Cluster `json:"clusters"`
 }
 
+// +genclient
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
