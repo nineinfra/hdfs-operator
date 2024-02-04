@@ -88,15 +88,14 @@ func (r *HdfsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 func (r *HdfsClusterReconciler) reconcileClusterStatus(ctx context.Context, cluster *hdfsv1.HdfsCluster, logger logr.Logger) (err error) {
 
-	if cluster.Status.ClustersStatus == nil {
-		cluster.Status.ClustersStatus = make([]hdfsv1.ClusterStatus, 0)
-	}
 	var roleList = []string{
 		HdfsRoleNameNode,
 		HdfsRoleDataNode,
 		HdfsRoleJournalNode,
 		//HdfsRoleHttpFS,
 	}
+	var css = make([]hdfsv1.ClusterStatus, 0)
+
 	for _, role := range roleList {
 		cluster.Status.Init(role)
 		existsPods := &corev1.PodList{}
@@ -143,6 +142,8 @@ func (r *HdfsClusterReconciler) reconcileClusterStatus(ctx context.Context, clus
 				if cs.CurrentVersion == "" && cluster.Status.IsClusterInReadyState(role) {
 					cs.CurrentVersion = cluster.Spec.Image.Tag
 				}
+				cs.Name = ClusterResourceName(cluster, fmt.Sprintf("-%s", role))
+				css = append(css, cs)
 				bFlag = true
 			}
 		}
@@ -163,9 +164,11 @@ func (r *HdfsClusterReconciler) reconcileClusterStatus(ctx context.Context, clus
 			if cs.CurrentVersion == "" && cluster.Status.IsClusterInReadyState(role) {
 				cs.CurrentVersion = cluster.Spec.Image.Tag
 			}
-			cluster.Status.ClustersStatus = append(cluster.Status.ClustersStatus, cs)
+			cs.Name = ClusterResourceName(cluster, fmt.Sprintf("-%s", role))
+			css = append(css, cs)
 		}
 	}
+	cluster.Status.ClustersStatus = css
 	return r.Client.Status().Update(context.TODO(), cluster)
 }
 
