@@ -20,6 +20,12 @@ const (
 	// DefaultWebUIUser is the default web ui user for hdfs
 	DefaultWebUIUser = "root"
 
+	// DefaultKyuubiUser is the default nineinfra user for hdfs
+	DefaultKyuubiUser = "kyuubi"
+
+	// DefaultHiveUser is the default hive user for hdfs
+	DefaultHiveUser = "hive"
+
 	// DefaultQuorumReplicas is the default quorum replicas
 	DefaultQuorumReplicas = 3
 
@@ -160,6 +166,11 @@ var HDFSRole2Prefix = map[string]string{
 	"httpfs":      "hf",
 }
 
+var DefaultHdfsUserList = []string{
+	DefaultWebUIUser,
+	DefaultKyuubiUser,
+	DefaultHiveUser,
+}
 var DefaultNamedPortConfKey = map[string]string{
 	"jn-rpc":   "dfs.journalnode.rpc-address",
 	"jn-http":  "dfs.journalnode.http-address",

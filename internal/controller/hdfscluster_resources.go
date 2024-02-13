@@ -95,10 +95,12 @@ func makeCoreSite(cluster *hdfsv1.HdfsCluster, coreSite map[string]string, ha bo
 
 	if _, ok := coreSite["hadoop.http.staticuser.user"]; !ok {
 		coreSite["hadoop.http.staticuser.user"] = DefaultWebUIUser
-		coreSite["hadoop.proxyuser.root.groups"] = "*"
-		coreSite["hadoop.proxyuser.root.users"] = "*"
 	}
 
+	for _, u := range DefaultHdfsUserList {
+		coreSite[fmt.Sprintf("hadoop.proxyuser.%s.groups", u)] = "*"
+		coreSite[fmt.Sprintf("hadoop.proxyuser.%s.hosts", u)] = "*"
+	}
 }
 
 func makeHdfsSite(cluster *hdfsv1.HdfsCluster, hdfsSite map[string]string, ha bool) {
