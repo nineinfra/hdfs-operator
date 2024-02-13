@@ -32,7 +32,7 @@ const (
 	// DefaultDiskNum is the default disk num
 	DefaultDiskNum = 1
 
-	// DefaultMaxWaitSeconds is the default disk num
+	// DefaultMaxWaitSeconds is the default max wait seconds
 	DefaultMaxWaitSeconds = 600
 
 	// DefaultClusterDomainName is the default domain name key for the k8s cluster
