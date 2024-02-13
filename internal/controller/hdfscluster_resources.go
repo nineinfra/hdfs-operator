@@ -369,7 +369,7 @@ func (r *HdfsClusterReconciler) constructConfigMap(cluster *hdfsv1.HdfsCluster) 
 	}
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      ClusterResourceName(cluster, DefaultNameSuffix, DefaultConfigNameSuffix),
+			Name:      ClusterResourceName(cluster, fmt.Sprintf("-%s", DefaultConfigNameSuffix)),
 			Namespace: cluster.Namespace,
 			Labels:    ClusterResourceLabels(cluster, HdfsRoleAll),
 		},
@@ -427,17 +427,17 @@ func (r *HdfsClusterReconciler) constructVolumeMounts(cluster *hdfsv1.HdfsCluste
 	num := int(getDiskNum(cluster, role))
 	volumeMounts := []corev1.VolumeMount{
 		{
-			Name:      ClusterResourceName(cluster, DefaultNameSuffix, DefaultConfigNameSuffix),
+			Name:      ClusterResourceName(cluster, fmt.Sprintf("-%s", DefaultConfigNameSuffix)),
 			MountPath: fmt.Sprintf("%s/%s", HdfsConfDir, DefaultCoreSiteFile),
 			SubPath:   DefaultCoreSiteFile,
 		},
 		{
-			Name:      ClusterResourceName(cluster, DefaultNameSuffix, DefaultConfigNameSuffix),
+			Name:      ClusterResourceName(cluster, fmt.Sprintf("-%s", DefaultConfigNameSuffix)),
 			MountPath: fmt.Sprintf("%s/%s", HdfsConfDir, DefaultHdfsSiteFile),
 			SubPath:   DefaultHdfsSiteFile,
 		},
 		{
-			Name:      ClusterResourceName(cluster, DefaultNameSuffix, DefaultConfigNameSuffix),
+			Name:      ClusterResourceName(cluster, fmt.Sprintf("-%s", DefaultConfigNameSuffix)),
 			MountPath: fmt.Sprintf("%s/%s", HdfsConfDir, DefaultHttpFSSiteFile),
 			SubPath:   DefaultHttpFSSiteFile,
 		},
@@ -462,11 +462,11 @@ func (r *HdfsClusterReconciler) constructVolumes(cluster *hdfsv1.HdfsCluster, ro
 	num := int(getDiskNum(cluster, role))
 	volumes := []corev1.Volume{
 		{
-			Name: ClusterResourceName(cluster, DefaultNameSuffix, DefaultConfigNameSuffix),
+			Name: ClusterResourceName(cluster, fmt.Sprintf("-%s", DefaultConfigNameSuffix)),
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: ClusterResourceName(cluster, DefaultNameSuffix, DefaultConfigNameSuffix),
+						Name: ClusterResourceName(cluster, fmt.Sprintf("-%s", DefaultConfigNameSuffix)),
 					},
 					Items: []corev1.KeyToPath{
 						{

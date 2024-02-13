@@ -5,13 +5,13 @@ const (
 	// hdfs-site k/v list.https://hadoop.apache.org/docs/r3.3.6/hadoop-project-dist/hadoop-hdfs/hdfs-default.xml
 	// core-site k/v list.https://hadoop.apache.org/docs/r3.3.6/hadoop-project-dist/hadoop-common/core-default.xml
 	CurrentHdfsVersion = "v3.3.6"
-	// DefaultNameSuffix is the default name suffix of the resources of the zookeeper
+	// DefaultNameSuffix is the default name suffix of the resources of the hdfs
 	DefaultNameSuffix = "-hdfs"
 
-	// DefaultClusterSign is the default cluster sign of the zookeeper
+	// DefaultClusterSign is the default cluster sign of the hdfs
 	DefaultClusterSign = "hdfs"
 
-	// DefaultStorageClass is the default storage class of the zookeeper
+	// DefaultStorageClass is the default storage class of the hdfs
 	DefaultStorageClass = "nineinfra-default"
 
 	// DefaultNameService is the default name service for hdfs
