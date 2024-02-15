@@ -1,5 +1,5 @@
 apiVersion: v2
-appVersion: 0.7.0
+appVersion: v3.3.6
 description: The Hdfs Operator of Hdfs for Apache Hdfs
 home: https://github.com/nineinfra/hdfs-operator
 maintainers:
